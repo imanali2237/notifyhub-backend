@@ -20,3 +20,6 @@ npm-debug.log*
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# generated Prisma client (rebuilt by `npm run db:generate` / postinstall)
+src/generated/

@@ -1,0 +1,62 @@
+# Local development infrastructure for NotifyHub.
+# Start:  npm run infra:up      Stop: npm run infra:down
+# Wipe all data: npm run infra:reset
+name: notifyhub
+
+services:
+  # Config data: tenants, API keys, subscribers, workflows, templates
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notifyhub
+      POSTGRES_PASSWORD: notifyhub
+      POSTGRES_DB: notifyhub
+    ports: ["5432:5432"]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notifyhub -d notifyhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Notification logs + in-app inbox feed
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: notifyhub
+      MONGO_INITDB_ROOT_PASSWORD: notifyhub
+    ports: ["27017:27017"]
+    volumes: [mongo_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # BullMQ queues, idempotency keys, rate limiting
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]   # persist queued jobs across restarts
+    ports: ["6379:6379"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Fake SMTP server — catches every email; view them at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
