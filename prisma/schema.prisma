@@ -1,0 +1,14 @@
+// Postgres schema — config data (tenants, API keys, subscribers, workflows...).
+// Models get added here as we build each module. After changing this file:
+//   npm run db:migrate   (creates + applies a migration, regenerates the client)
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
