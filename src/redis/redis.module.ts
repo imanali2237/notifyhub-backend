@@ -8,12 +8,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import type { Env } from '../config/env.js';
-
-/** Injection token: `constructor(@Inject(REDIS) private redis: Redis) {}` */
-export const REDIS = Symbol('REDIS');
+import { REDIS } from './redis.constants.js';
 
 /**
- * Shared Redis connection for idempotency keys, rate limiting, etc.
+ * Shared Redis connection for OTPs, idempotency keys, rate limiting, etc.
  * (BullMQ will get its own connections later — it needs blocking commands.)
  */
 @Global()
