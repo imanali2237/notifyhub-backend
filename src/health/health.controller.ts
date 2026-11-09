@@ -7,10 +7,11 @@ import {
 import { InjectConnection } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 import { Redis } from 'ioredis';
+import { withTimeout } from '../common/utils/with-timeout.js';
 import { PrismaService } from '../database/prisma.service.js';
-import { REDIS } from '../redis/redis.module.js';
-
-type Status = 'up' | 'down';
+import { REDIS } from '../redis/redis.constants.js';
+import { HEALTH_PROBE_TIMEOUT_MS } from './health.constants.js';
+import type { HealthReport, ServiceStatus } from './health.interfaces.js';
 
 /** GET /health — pings every backing service. 200 if all are up, 503 otherwise. */
 @Controller('health')
@@ -22,7 +23,7 @@ export class HealthController {
   ) {}
 
   @Get()
-  async check() {
+  async check(): Promise<HealthReport> {
     const [postgres, mongo, redis] = await Promise.all([
       this.probe(() => this.prisma.$queryRaw`SELECT 1`),
       this.probe(() => this.mongo.db!.admin().ping()),
@@ -31,26 +32,19 @@ export class HealthController {
     const services = { postgres, mongo, redis };
     const ok = Object.values(services).every((s) => s === 'up');
 
-    if (!ok)
+    if (!ok) {
       throw new ServiceUnavailableException({ status: 'error', services });
+    }
     return { status: 'ok', services };
   }
 
   /**
-   * Runs one ping with a timeout. Without the timeout a dead service can hang the
-   * request forever (e.g. ioredis queues commands while it waits to reconnect).
+   * Without the timeout a dead service can hang the request forever
+   * (e.g. ioredis queues commands while it waits to reconnect).
    */
-  private async probe(
-    fn: () => Promise<unknown>,
-    timeoutMs = 2000,
-  ): Promise<Status> {
+  private async probe(fn: () => Promise<unknown>): Promise<ServiceStatus> {
     try {
-      await Promise.race([
-        fn(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), timeoutMs).unref(),
-        ),
-      ]);
+      await withTimeout(fn(), HEALTH_PROBE_TIMEOUT_MS);
       return 'up';
     } catch {
       return 'down';

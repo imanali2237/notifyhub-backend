@@ -3,12 +3,71 @@
 //   npm run db:migrate   (creates + applies a migration, regenerates the client)
 
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+/// An organization / app that sends notifications through NotifyHub.
+/// Owns API keys, subscribers, workflows, etc. (added in later migrations).
+model Tenant {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  plan            String   @default("free")
+  rateLimitPerMin Int      @default(60) @map("rate_limit_per_min")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user    User? // one user per tenant for now (see User.tenantId)
+  apiKeys ApiKey[]
+
+  @@map("tenants")
+}
+
+/// A person who logs in to the dashboard.
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique // always store lowercased
+  passwordHash    String    @map("password_hash") // argon2/bcrypt hash — never return from the API
+  name            String?
+  emailVerifiedAt DateTime? @map("email_verified_at") // unused for now; saves a migration later
+  lastLoginAt     DateTime? @map("last_login_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // @unique = one user per tenant. To allow teams later: remove @unique,
+  // change Tenant.user to `users User[]`, and add a role column.
+  tenantId String @unique @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("users")
+}
+
+enum ApiKeyEnvironment {
+  test // key starts with nh_test_
+  live // key starts with nh_live_
+}
+
+/// Lets a tenant's backend call the API (SDK / REST) with the `x-api-key` header.
+/// The full key is shown ONCE at creation; only its SHA-256 hash is stored.
+model ApiKey {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String // label chosen by the user, e.g. "Production server"
+  environment ApiKeyEnvironment @default(live)
+  prefix      String // first characters, e.g. "nh_live_a1b2c3d4" — safe to display
+  keyHash     String            @unique @map("key_hash") // sha256(fullKey) in hex — used for lookup
+  lastUsedAt  DateTime?         @map("last_used_at")
+  revokedAt   DateTime?         @map("revoked_at") // set = key no longer works (kept for audit)
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  tenantId String @map("tenant_id") @db.Uuid
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("api_keys")
 }
