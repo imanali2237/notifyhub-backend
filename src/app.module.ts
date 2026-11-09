@@ -1,37 +1,29 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ApiKeysModule } from './api-keys/api-keys.module.js';
 import { AuthModule } from './auth/auth.module.js';
-import { validateEnv, type Env } from './config/env.js';
+import { AppConfigModule } from './config/app-config.module.js';
+import { MongoModule } from './database/mongo.module.js';
 import { PrismaModule } from './database/prisma.module.js';
+import { EventsModule } from './events/events.module.js';
 import { HealthModule } from './health/health.module.js';
+import { NotificationsApiModule } from './notifications/notifications-api.module.js';
 import { RedisModule } from './redis/redis.module.js';
 
+/** Root module of the API process (main.ts). The worker has its own: WorkerModule. */
 @Module({
   imports: [
     // ── Infrastructure ──
-    // Loads .env, validates it with zod, and makes ConfigService available everywhere.
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-
-    // PostgreSQL (config data) via Prisma
-    PrismaModule,
-
-    // MongoDB (logs + in-app feed) via Mongoose
-    MongooseModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<Env, true>) => ({
-        uri: config.get('MONGO_URI'),
-      }),
-    }),
-
-    // Redis (OTPs, idempotency, rate limits)
-    RedisModule,
+    AppConfigModule, // .env, validated with zod
+    PrismaModule, // PostgreSQL (config data)
+    MongoModule, // MongoDB (notification logs)
+    RedisModule, // Redis (OTPs, idempotency, rate limits)
 
     // ── Features ──
     HealthModule, // GET /health
     AuthModule, // signup, email OTP, login (JWT)
     ApiKeysModule, // dashboard manages keys (JWT), SDK uses them (x-api-key)
+    EventsModule, // POST /v1/events/trigger, /v1/email/send → queue
+    NotificationsApiModule, // GET /v1/notifications/:id
   ],
 })
 export class AppModule {}

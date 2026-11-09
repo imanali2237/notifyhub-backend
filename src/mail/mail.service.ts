@@ -1,15 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer, { type Transporter } from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import type { Env } from '../config/env.js';
 import type { MailMessage } from './mail.interfaces.js';
+import { createSmtpTransport } from './smtp-transport.factory.js';
 
 /**
  * NotifyHub's OWN system emails (signup OTP, password reset...).
  * Locally this goes to Mailpit → http://localhost:8025.
  *
- * Not to be confused with tenant notifications — those will go through the
- * provider system (Phase 3), with each tenant's own SMTP/Brevo/etc. credentials.
+ * Not to be confused with tenant notifications — those go through the channel
+ * + provider system (see SmtpEmailProvider) and the worker.
  */
 @Injectable()
 export class MailService {
@@ -18,11 +19,7 @@ export class MailService {
   private readonly from: string;
 
   constructor(config: ConfigService<Env, true>) {
-    this.transporter = nodemailer.createTransport({
-      host: config.get('SMTP_HOST'),
-      port: config.get('SMTP_PORT'),
-      secure: false, // Mailpit has no TLS; real providers on 465 would need true
-    });
+    this.transporter = createSmtpTransport(config);
     this.from = config.get('SMTP_FROM');
   }
 

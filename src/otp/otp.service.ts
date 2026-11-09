@@ -4,32 +4,37 @@ import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { Redis } from 'ioredis';
 import type { Env } from '../config/env.js';
 import { REDIS } from '../redis/redis.constants.js';
-import {
-  OTP_KEY_PREFIX,
-  OTP_LENGTH,
-  OTP_MAX_ATTEMPTS,
-  OTP_RESEND_COOLDOWN_SECONDS,
-  OTP_TTL_SECONDS,
-} from './otp.constants.js';
+import { OTP_KEY_PREFIX, OTP_LENGTH } from './otp.constants.js';
 import type { OtpCheck, OtpPurpose } from './otp.interfaces.js';
 import { CHECK_OTP_SCRIPT } from './otp.scripts.js';
 
 /**
  * Redis layout (per purpose + identifier, e.g. an email):
- *   otp:{purpose}:{id}           HASH { hash, attempts }   TTL 15 min
- *   otp:{purpose}:{id}:cooldown  "1"                       TTL 60 s
+ *   otp:{purpose}:{id}           HASH { hash, attempts }   TTL = OTP_TTL_SECONDS
+ *   otp:{purpose}:{id}:cooldown  "1"                       TTL = OTP_RESEND_COOLDOWN_SECONDS
  *
  * Only an HMAC of the code is stored, never the code itself.
  */
 @Injectable()
 export class OtpService {
   private readonly secret: string;
+  private readonly ttlSeconds: number;
+  private readonly maxAttempts: number;
+  private readonly cooldownSeconds: number;
 
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
     config: ConfigService<Env, true>,
   ) {
     this.secret = config.get('OTP_SECRET');
+    this.ttlSeconds = config.get('OTP_TTL_SECONDS');
+    this.maxAttempts = config.get('OTP_MAX_ATTEMPTS');
+    this.cooldownSeconds = config.get('OTP_RESEND_COOLDOWN_SECONDS');
+  }
+
+  /** How long a new code stays valid, in seconds (for email copy, etc.). */
+  get ttl(): number {
+    return this.ttlSeconds;
   }
 
   /** Creates a new code (replacing any previous one) and returns it so it can be emailed. */
@@ -39,12 +44,12 @@ export class OtpService {
       this.cooldownKey(purpose, id),
       '1',
       'EX',
-      OTP_RESEND_COOLDOWN_SECONDS,
+      this.cooldownSeconds,
       'NX',
     );
     if (!allowed) {
       throw new HttpException(
-        `Please wait ${OTP_RESEND_COOLDOWN_SECONDS} seconds before requesting a new code`,
+        `Please wait ${this.cooldownSeconds} seconds before requesting a new code`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
@@ -55,7 +60,7 @@ export class OtpService {
       .multi()
       .del(key) // a new code invalidates the old one
       .hset(key, { hash: this.hash(purpose, id, code), attempts: 0 })
-      .expire(key, OTP_TTL_SECONDS)
+      .expire(key, this.ttlSeconds)
       .exec();
 
     return code;
@@ -74,7 +79,7 @@ export class OtpService {
     if (!result) return 'expired';
 
     const [attempts, storedHash] = result;
-    if (attempts > OTP_MAX_ATTEMPTS) {
+    if (attempts > this.maxAttempts) {
       await this.redis.del(key);
       return 'too_many_attempts';
     }

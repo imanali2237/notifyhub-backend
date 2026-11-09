@@ -3,11 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
-import {
-  API_KEY_PUBLIC_SELECT,
-  MAX_ACTIVE_KEYS_PER_TENANT,
-} from './api-keys.constants.js';
+import { API_KEY_PUBLIC_SELECT } from './api-keys.constants.js';
 import { generateApiKey } from './utils/api-key.util.js';
 import type { CreateApiKeyDto } from './dto/create-api-key.dto.js';
 
@@ -18,15 +17,23 @@ import type { CreateApiKeyDto } from './dto/create-api-key.dto.js';
  */
 @Injectable()
 export class ApiKeysService {
-  constructor(private readonly prisma: PrismaService) {}
+  /** Stops a leaked dashboard session from minting thousands of keys. */
+  private readonly maxActiveKeys: number;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.maxActiveKeys = config.get('API_KEYS_MAX_ACTIVE_PER_TENANT');
+  }
 
   async create(tenantId: string, dto: CreateApiKeyDto) {
     const active = await this.prisma.apiKey.count({
       where: { tenantId, revokedAt: null },
     });
-    if (active >= MAX_ACTIVE_KEYS_PER_TENANT) {
+    if (active >= this.maxActiveKeys) {
       throw new BadRequestException(
-        `You can have at most ${MAX_ACTIVE_KEYS_PER_TENANT} active API keys. Revoke one first.`,
+        `You can have at most ${this.maxActiveKeys} active API keys. Revoke one first.`,
       );
     }
 

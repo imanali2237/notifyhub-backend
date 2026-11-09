@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsIn,
   IsOptional,
@@ -8,13 +9,22 @@ import {
 import type { ApiKeyEnvironment } from '../../generated/prisma/client.js';
 
 export class CreateApiKeyDto {
-  /** A label so you can tell keys apart, e.g. "Production server". */
+  @ApiProperty({
+    description: 'A label so you can tell keys apart',
+    example: 'Production server',
+    minLength: 1,
+    maxLength: 100,
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(100)
   name: string;
 
-  /** "live" (default) → nh_live_..., "test" → nh_test_... */
+  @ApiPropertyOptional({
+    description: '`live` → nh_live_… key, `test` → nh_test_… key',
+    enum: ['test', 'live'],
+    default: 'live',
+  })
   @IsOptional()
   @IsIn(['test', 'live'])
   environment?: ApiKeyEnvironment;
