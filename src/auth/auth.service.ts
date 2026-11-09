@@ -230,6 +230,6 @@ export class AuthService {
 
   private async sendVerificationCode(email: string): Promise<void> {
     const code = await this.otp.issue(EMAIL_VERIFICATION_OTP_PURPOSE, email);
-    await this.mail.send(verificationEmail(email, code));
+    await this.mail.send(verificationEmail(email, code, this.otp.ttl));
   }
 }

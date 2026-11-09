@@ -1,9 +1,12 @@
 import type { MailMessage } from '../../mail/mail.interfaces.js';
-import { OTP_TTL_SECONDS } from '../../otp/otp.constants.js';
 
-/** The email sent after signup with the 6-digit verification code. */
-export function verificationEmail(to: string, code: string): MailMessage {
-  const minutes = OTP_TTL_SECONDS / 60;
+/** The email sent after signup with the verification code. */
+export function verificationEmail(
+  to: string,
+  code: string,
+  ttlSeconds: number,
+): MailMessage {
+  const minutes = Math.round(ttlSeconds / 60);
   return {
     to,
     subject: `${code} is your NotifyHub verification code`,

@@ -10,9 +10,6 @@ export const API_KEY_RANDOM_BYTES = 24;
 /** Characters kept in plain text for display: "nh_live_" (8) + first 8 random chars. */
 export const API_KEY_DISPLAY_PREFIX_LENGTH = 16;
 
-/** Stops a leaked dashboard session from minting thousands of keys. */
-export const MAX_ACTIVE_KEYS_PER_TENANT = 20;
-
 /** Only write last_used_at if it's older than this — avoids a DB write on every request. */
 export const LAST_USED_UPDATE_INTERVAL_MS = 60_000;
 

@@ -4,25 +4,46 @@ import {
   Inject,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectConnection } from '@nestjs/mongoose';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Connection } from 'mongoose';
 import { Redis } from 'ioredis';
 import { withTimeout } from '../common/utils/with-timeout.js';
+import { API_TAGS } from '../common/swagger/swagger.constants.js';
+import type { Env } from '../config/env.js';
+import { HealthResponseDto } from './dto/health.response.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { REDIS } from '../redis/redis.constants.js';
-import { HEALTH_PROBE_TIMEOUT_MS } from './health.constants.js';
 import type { HealthReport, ServiceStatus } from './health.interfaces.js';
 
 /** GET /health — pings every backing service. 200 if all are up, 503 otherwise. */
+@ApiTags(API_TAGS.health)
 @Controller('health')
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     @InjectConnection() private readonly mongo: Connection,
     @Inject(REDIS) private readonly redis: Redis,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   @Get()
+  @ApiOperation({
+    summary: 'Check the server and its dependencies',
+    description:
+      'Pings PostgreSQL, MongoDB and Redis (each gets HEALTH_PROBE_TIMEOUT_MS, default 2s). No auth needed — for load balancers and uptime monitors.',
+  })
+  @ApiOkResponse({ type: HealthResponseDto, description: 'Everything is up' })
+  @ApiServiceUnavailableResponse({
+    type: HealthResponseDto,
+    description: 'At least one dependency is down (see `services`)',
+  })
   async check(): Promise<HealthReport> {
     const [postgres, mongo, redis] = await Promise.all([
       this.probe(() => this.prisma.$queryRaw`SELECT 1`),
@@ -44,7 +65,7 @@ export class HealthController {
    */
   private async probe(fn: () => Promise<unknown>): Promise<ServiceStatus> {
     try {
-      await withTimeout(fn(), HEALTH_PROBE_TIMEOUT_MS);
+      await withTimeout(fn(), this.config.get('HEALTH_PROBE_TIMEOUT_MS'));
       return 'up';
     } catch {
       return 'down';

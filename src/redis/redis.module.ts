@@ -25,6 +25,13 @@ import { REDIS } from './redis.constants.js';
         const client = new Redis({
           host: config.get('REDIS_HOST'),
           port: config.get('REDIS_PORT'),
+          password: config.get('REDIS_PASSWORD', { infer: true }),
+          // Fail fast during an outage instead of waiting (REDIS_COMMAND_TIMEOUT_MS)...
+          commandTimeout: config.get('REDIS_COMMAND_TIMEOUT_MS'),
+          // ...and don't buffer commands while disconnected. A buffered command
+          // would run LATER, after the request already failed (e.g. claiming an
+          // idempotency key for a request that was rolled back).
+          enableOfflineQueue: false,
         });
         client.on('ready', () => logger.log('Connected to Redis'));
         client.on('error', (err) => logger.error(err.message));
