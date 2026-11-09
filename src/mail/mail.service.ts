@@ -1,35 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { Transporter } from 'nodemailer';
-import type { Env } from '../config/env.js';
+import type { EmailMessage } from '../channels/email/email.interfaces.js';
+import { ProviderRegistry } from '../providers/provider.registry.js';
 import type { MailMessage } from './mail.interfaces.js';
-import { createSmtpTransport } from './smtp-transport.factory.js';
 
 /**
- * NotifyHub's OWN system emails (signup OTP, password reset...).
- * Locally this goes to Mailpit → http://localhost:8025.
- *
- * Not to be confused with tenant notifications — those go through the channel
- * + provider system (see SmtpEmailProvider) and the worker.
+ * NotifyHub's OWN system emails (signup OTP, password reset...). Sent right away
+ * (not queued) through the same email providers as notifications, with the
+ * same failover order (EMAIL_PROVIDERS). Locally → Mailpit, http://localhost:8025.
  */
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private readonly transporter: Transporter;
-  private readonly from: string;
 
-  constructor(config: ConfigService<Env, true>) {
-    this.transporter = createSmtpTransport(config);
-    this.from = config.get('SMTP_FROM');
-  }
+  constructor(private readonly providers: ProviderRegistry) {}
 
   async send(message: MailMessage): Promise<void> {
-    const info = await this.transporter.sendMail({
-      from: this.from,
-      ...message,
-    });
+    const email: EmailMessage = message;
+    const result = await this.providers.send('email', email);
+    if (!result.success) throw new Error(result.error);
+
+    const fallback =
+      result.failedAttempts.length > 0 ? ', fallback provider' : '';
+    // Never log the subject/body: system emails contain secrets (OTP codes).
     this.logger.log(
-      `Sent "${message.subject}" to ${message.to} (${info.messageId})`,
+      `Sent system email to ${message.to} via ${result.providerId}${fallback}`,
     );
   }
 }

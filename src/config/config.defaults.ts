@@ -25,6 +25,9 @@ export const DEFAULTS = {
   SMTP_CONNECTION_TIMEOUT_MS: 10_000,
   SMTP_SOCKET_TIMEOUT_MS: 20_000,
 
+  // ── Brevo ──
+  BREVO_TIMEOUT_MS: 10_000, // max wait for Brevo's API before trying the next provider
+
   // ── Queues (BullMQ) ──
   QUEUE_MAX_ATTEMPTS: 5, // 1 try + 4 retries
   QUEUE_BACKOFF_DELAY_MS: 2000, // exponential: 2s, 4s, 8s, 16s

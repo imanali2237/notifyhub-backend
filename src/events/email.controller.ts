@@ -54,7 +54,7 @@ export class EmailController {
       'Duplicate — this idempotencyKey was already used; returns the original notification, nothing re-sent',
   })
   @ApiErrorResponses({
-    400: 'Invalid body, missing to.email, no html/text, or invalid template syntax',
+    400: 'Invalid body, email channel not enabled, missing to.email, no html/text, or invalid template syntax',
     401: 'Missing, invalid or revoked API key',
     503: 'Queue/Redis temporarily unavailable — safe to retry',
   })

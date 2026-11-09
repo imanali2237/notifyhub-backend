@@ -24,6 +24,7 @@ import { renderTemplates } from '../../templates/template-renderer.js';
  *
  * Each channel only subclasses this and sets `channel` (see email.processor.ts).
  *
+ * Providers are tried in the operator's order (failover) by ProviderRegistry.
  * Throwing an Error           → BullMQ retries later (exponential backoff).
  * Throwing UnrecoverableError → no more retries, job goes to the failed set (DLQ).
  */
@@ -52,9 +53,15 @@ export abstract class ChannelProcessor
       CHANNEL_CONCURRENCY_SETTING[this.channel],
     );
     this.worker.concurrency = concurrency;
-    this.logger.log(
-      `${this.channel} worker ready (concurrency ${concurrency})`,
-    );
+    if (this.providers.isEnabled(this.channel)) {
+      this.logger.log(
+        `${this.channel} worker ready (concurrency ${concurrency})`,
+      );
+    } else {
+      this.logger.warn(
+        `${this.channel} channel disabled: no providers configured, leftover jobs will be marked failed`,
+      );
+    }
   }
 
   async process(job: Job<NotificationJobData>) {
@@ -76,6 +83,11 @@ export abstract class ChannelProcessor
       throw new UnrecoverableError(reason);
     };
 
+    // e.g. the operator removed all email providers while jobs were still queued
+    if (!this.providers.isEnabled(this.channel)) {
+      return fail(`The ${this.channel} channel has no providers configured`);
+    }
+
     const address = notification.recipient[handler.recipientField];
     if (!address) return fail(`Recipient has no ${handler.recipientField}`);
 
@@ -92,35 +104,47 @@ export abstract class ChannelProcessor
       return fail(`Template error: ${(err as Error).message}`); // retrying won't fix it
     }
 
-    // 2. Send through the channel's provider.
-    const provider = this.providers.resolve(this.channel);
-    const result = await provider.send(handler.buildMessage(address, rendered));
+    // 2. Send through the channel's providers, in the operator's failover order.
+    const result = await this.providers.send(
+      this.channel,
+      handler.buildMessage(address, rendered),
+    );
+    for (const failed of result.failedAttempts) {
+      this.logger.warn(
+        `${this.channel} ${notificationId}: provider ${failed.providerId} failed (${failed.failure}): ${failed.error}`,
+      );
+    }
 
-    // 3a. Success
+    // 3a. Success (possibly on a fallback provider)
     if (result.success) {
       await this.notifications.markSent(
         notificationId,
-        provider.id,
+        result.providerId,
         result.providerMessageId,
         rendered,
       );
+      const fallback =
+        result.failedAttempts.length > 0 ? ' (fallback provider)' : '';
       this.logger.log(
-        `✓ ${this.channel} ${notificationId} sent to ${address} via ${provider.id} (attempt ${attempt})`,
+        `✓ ${this.channel} ${notificationId} sent to ${address} via ${result.providerId}${fallback} (attempt ${attempt})`,
       );
       return {
-        provider: provider.id,
+        provider: result.providerId,
         providerMessageId: result.providerMessageId,
       };
     }
 
-    // 3b. Failure: give up, or let BullMQ retry
-    const error = result.error ?? 'Unknown provider error';
-    if (!result.retryable || attempt >= maxAttempts) return fail(error);
+    // 3b. Every provider failed: give up, or let BullMQ retry the whole chain later
+    if (!result.retryable || attempt >= maxAttempts) return fail(result.error);
 
-    await this.notifications.markRetrying(notificationId, error, attempt);
-    this.logger.warn(
-      `↻ ${this.channel} ${notificationId} attempt ${attempt}/${maxAttempts} failed (${error}), retrying`,
+    await this.notifications.markRetrying(
+      notificationId,
+      result.error,
+      attempt,
     );
-    throw new Error(error);
+    this.logger.warn(
+      `↻ ${this.channel} ${notificationId} attempt ${attempt}/${maxAttempts} failed (${result.error}), retrying`,
+    );
+    throw new Error(result.error);
   }
 }
