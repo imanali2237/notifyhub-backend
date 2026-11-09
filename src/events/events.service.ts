@@ -16,6 +16,7 @@ import type { ChannelContent } from '../channels/channels.interfaces.js';
 import type { Env } from '../config/env.js';
 import type { CreateNotificationInput } from '../notifications/notifications.interfaces.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ProviderRegistry } from '../providers/provider.registry.js';
 import { NotificationQueueService } from '../queues/notification-queue.service.js';
 import { REDIS } from '../redis/redis.constants.js';
 import { assertValidTemplate } from '../templates/template-renderer.js';
@@ -40,6 +41,7 @@ export class EventsService {
   constructor(
     private readonly notifications: NotificationsService,
     private readonly queue: NotificationQueueService,
+    private readonly providers: ProviderRegistry,
     @Inject(REDIS) private readonly redis: Redis,
     config: ConfigService<Env, true>,
   ) {
@@ -180,6 +182,13 @@ export class EventsService {
   /** Generic checks, driven by the channel's handler. */
   private validateChannel(channel: Channel, dto: TriggerEventDto): void {
     const handler = CHANNEL_HANDLERS[channel];
+
+    // 0. The operator configured at least one provider for this channel.
+    if (!this.providers.isEnabled(channel)) {
+      throw new BadRequestException(
+        `The ${channel} channel is not enabled on this server`,
+      );
+    }
 
     // 1. The recipient has the address this channel needs (email, phone...).
     if (!dto.to[handler.recipientField]) {

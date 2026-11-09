@@ -49,7 +49,7 @@ export class EventsController {
       'Duplicate — this idempotencyKey was already used; returns the original notifications, nothing re-sent',
   })
   @ApiErrorResponses({
-    400: 'Invalid body, unknown channel, missing recipient address (e.g. to.email for the email channel), or invalid template syntax',
+    400: 'Invalid body, unknown or disabled channel, missing recipient address (e.g. to.email for the email channel), or invalid template syntax',
     401: 'Missing, invalid or revoked API key',
     503: 'Queue/Redis temporarily unavailable — safe to retry',
   })

@@ -34,8 +34,11 @@ everything else is driven by it.
    `sms?: SmsContentDto` field to `ChannelsContentDto`.
 
 4. **Provider(s)** — `providers/sms/console-sms.provider.ts` implementing
-   `ChannelProvider<SmsMessage>` with `channel = 'sms'`.
-   Add it to `BUILT_IN_PROVIDERS` in `providers/providers.module.ts`.
+   `ChannelProvider<SmsMessage>` with `channel = 'sms'`. Then:
+   - add an `SMS_PROVIDERS` list to `config/env.ts` (like `EMAIL_PROVIDERS`)
+     plus each provider's required settings
+   - add the providers to `providers/providers.catalog.ts`
+     (`buildEnabledProviders` reads `SMS_PROVIDERS`)
 
 5. **Processor** — `worker/processors/sms.processor.ts`
    ```ts
@@ -49,7 +52,7 @@ everything else is driven by it.
 No changes needed in: `EventsService`, `NotificationsService`, the Notification
 schema, `NotificationQueueService`, `ChannelProcessor`, or the template renderer.
 
-## Adding a new provider to an existing channel (example: Brevo for email)
+## Adding a provider to an existing channel
 
-One class implementing `ChannelProvider<EmailMessage>` + one line in
-`BUILT_IN_PROVIDERS`. Nothing else changes.
+See [docs/contributing/adding-a-provider.md](../../docs/contributing/adding-a-provider.md)
+(contract, failure kinds, step-by-step example, tests, docs to update).

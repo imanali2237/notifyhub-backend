@@ -1,6 +1,9 @@
 # NotifyHub
 
-> A self-hostable, plug-and-play **Notification-as-a-Service**. Any app integrates with one API call or SDK, and NotifyHub handles channels, templates, preferences, queuing, retries and delivery logs.
+> An open-source, **self-hosted** notification platform. Run it on your own
+> server with one command; your apps send notifications with one API call, and
+> NotifyHub handles providers, templates, queuing, retries, failover and
+> delivery logs.
 
 ![Status](https://img.shields.io/badge/status-in%20development-orange)
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?logo=nestjs&logoColor=white)
@@ -10,102 +13,93 @@
 ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-```ts
-// Inside ANY client app
-await notify.trigger('order-shipped', {
-  to: { subscriberId: 'user_123', email: 'ali@example.com' },
-  payload: { orderId: 'A42', eta: 'Tomorrow' },
-  idempotencyKey: 'order-A42-shipped',
-});
+```bash
+curl -X POST http://localhost:3000/v1/email/send \
+  -H "x-api-key: nh_live_..." -H "Content-Type: application/json" \
+  -d '{
+    "to": { "subscriberId": "user_123", "email": "sara@example.com", "name": "Sara" },
+    "payload": { "orderId": "A42" },
+    "subject": "Order {{orderId}} shipped",
+    "html": "<p>Hi {{subscriber.name}}, order <b>{{orderId}}</b> is on its way.</p>",
+    "idempotencyKey": "order-A42-shipped"
+  }'
 ```
 
 ---
 
-## Table of contents
+## 📚 Documentation
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Tech stack](#tech-stack)
-- [Repository structure](#repository-structure)
-- [Getting started](#getting-started)
-- [Environment variables](#environment-variables)
-- [Database (Prisma)](#database-prisma)
-- [Scripts](#scripts)
-- [API overview](#api-overview)
-- [Adding a provider](#adding-a-provider)
-- [Design decisions](#design-decisions)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
+| Guide | |
+|---|---|
+| [Getting started](docs/getting-started.md) | Install, run, create an account and API key, send your first email |
+| [Email providers](docs/email-providers.md) | Gmail, Brevo, any SMTP server — and **several providers with automatic failover** |
+| [Sending notifications](docs/sending-notifications.md) | Endpoints, templates, idempotency, tracking delivery, errors |
+| [Configuration reference](docs/configuration.md) | Every `.env` setting with its default |
+| [Queues and workers](docs/queues-and-workers.md) | Retries, the queue dashboard, concurrency, scaling |
+| [Adding a provider or channel](docs/contributing/adding-a-provider.md) | Contributor guide |
+| [Architecture](docs/architecture.md) | Full design and roadmap |
 
 ---
 
 ## Features
 
-- **One API, many channels** — email, SMS, push, in-app, chat (Telegram / Discord / Slack) and outbound webhooks
-- **Workflows** — define which channels fire, in what order, with delays, digests and fallbacks
-- **Subscriber preferences** — per category and channel opt-outs, plus quiet hours by timezone
-- **Templates** — Handlebars / MJML per channel, versioned
-- **Reliable delivery** — BullMQ queues per channel, exponential backoff, dead letter queue, idempotency keys
-- **Plug-and-play providers** — add a new provider with one class and one line of registration
-- **Multi-tenant** — hashed API keys, per-tenant rate limiting, AES-256-GCM encrypted provider credentials
-- **Real-time in-app inbox** — Socket.IO gateway and an embeddable `<Inbox />` React component
-- **Full audit trail** — every status change of every message is logged
-- **$0 budget** — every dependency has a free option for development and demos
+**Works today**
+
+- **Self-hosted, one command** — `npm run dev` starts the databases, queue, API and worker
+- **Email** through **SMTP** (Gmail, any server, Mailpit for local testing) and **Brevo**
+- **Provider failover** — list providers in order (`EMAIL_PROVIDERS=brevo,smtp`); if one fails, the next takes over
+- **Reliable delivery** — queue per channel, retries with exponential backoff, dead-letter queue, idempotency keys
+- **Delivery tracking** — every notification's status and full history
+- **Templates** — Handlebars with automatic HTML escaping
+- **Accounts and API keys** — the first account is the admin; API keys are shown once and stored hashed
+- **Everything configurable via `.env`**, validated at startup
+- **Built-in tools** — Swagger API docs, queue dashboard (Bull Board), Mailpit test inbox
+- **Plug-and-play design** — a new provider is one class + one line
+
+**Planned** (see the [roadmap](docs/architecture.md#11-roadmap)): SMS, Telegram / Discord / Slack, push, in-app inbox with `<Inbox />` widget, subscribers and preferences, workflows, outbound webhooks, dashboard, `@notifyhub/node` SDK.
+
+---
+
+## Quick start
+
+Requirements: Node.js 20.19+ / 22.12+ / 24+, Docker.
+
+```bash
+git clone https://github.com/<your-username>/notifyhub.git
+cd notifyhub
+npm install
+cp .env.example .env        # then set OTP_SECRET and JWT_SECRET (openssl rand -hex 32)
+npm run dev
+```
+
+| What | URL |
+|---|---|
+| API | http://localhost:3000 |
+| API docs (Swagger) | http://localhost:3000/docs |
+| Queue dashboard | http://localhost:3000/queues |
+| Mailpit (test inbox) | http://localhost:8025 |
+
+Then follow [Getting started](docs/getting-started.md#5-create-your-account) to
+create your account and API key and send your first email.
 
 ---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph Clients["Client Applications"]
-        A1[Any Backend<br/>via REST / SDK]
-        A2[Frontend App<br/>with Inbox widget]
-    end
-
-    subgraph NH["NotifyHub"]
-        API[API Service<br/>NestJS]
-        WF[Workflow Engine]
-        Q[(Redis<br/>BullMQ Queues)]
-        subgraph Workers["Channel Workers"]
-            W1[Email]
-            W2[SMS]
-            W3[Push]
-            W4[Chat]
-            W5[Webhook]
-        end
-        WS[WebSocket Gateway<br/>Socket.IO]
-        PG[(PostgreSQL<br/>via Prisma)]
-        MG[(MongoDB<br/>logs & in-app feed)]
-        DASH[Dashboard<br/>Next.js]
-    end
-
-    A1 -->|API key| API
-    A2 <-->|real-time| WS
-    API --> WF --> Q
-    Q --> W1 & W2 & W3 & W4 & W5
-    W5 -->|status events| A1
-    API --> PG
-    WF --> PG
-    Workers --> MG
-    WF -->|in-app| WS
-    DASH --> API
+```
+your app ──► API (NestJS) ──► Redis queue (BullMQ) ──► worker ──► providers (SMTP, Brevo, ...)
+               │   │                                      │
+               │   └─► PostgreSQL (accounts, API keys)    │
+               └─────► MongoDB (notifications, history) ◄─┘
 ```
 
-**Request lifecycle**
+1. Your app calls `POST /v1/email/send` (or `/v1/events/trigger`) with an `x-api-key`
+2. The API validates the request, checks the idempotency key, saves the notification (`queued`), adds a job to the channel's queue and answers `202` in milliseconds
+3. A worker takes the job, renders the templates and sends through the configured providers in order, failing over when one fails
+4. The result (`sent` / `retrying` / `failed`, which provider, every attempt) is recorded and available at `GET /v1/notifications/:id`
 
-1. Client calls `POST /v1/events/trigger` with an `x-api-key` header
-2. API validates the DTO, resolves the tenant and checks the idempotency key in Redis
-3. A notification is recorded in MongoDB (`queued`) and a job is added to the `workflow` queue; the API returns `202 Accepted`
-4. The workflow engine loads the workflow, applies subscriber preferences, renders templates and fans out to channel queues
-5. Channel workers send through the tenant's configured provider, retrying with exponential backoff on retryable errors
-6. After max attempts, jobs go to the dead letter queue and an optional fallback channel
-7. Status changes are logged and pushed to the client app through signed webhooks
-
-The `api` and `worker` apps run as **separate processes**, so workers can be scaled independently of the API.
-
-Full design notes live in [`docs/architecture.md`](docs/architecture.md).
+The API and worker are **separate processes**: workers scale independently,
+and requests are still accepted while workers are down.
 
 ---
 
@@ -113,305 +107,75 @@ Full design notes live in [`docs/architecture.md`](docs/architecture.md).
 
 | Layer | Choice |
 |---|---|
-| API & workers | [NestJS](https://nestjs.com/) (TypeScript) |
-| Config database | PostgreSQL + [Prisma](https://www.prisma.io/) ORM |
-| Logs & in-app feed | MongoDB + Mongoose |
-| Queues & cache | Redis + [BullMQ](https://docs.bullmq.io/) |
-| Real-time | Socket.IO (Redis adapter) |
-| Templates | Handlebars, MJML |
-| Dashboard | Next.js, Tailwind CSS, shadcn/ui |
-| API docs | `@nestjs/swagger` |
-| Monorepo | pnpm workspaces |
-| Testing | Jest, Supertest, Testcontainers, k6 |
-| Observability | Pino, OpenTelemetry, Prometheus, Grafana |
-| CI/CD | GitHub Actions |
-
-**Providers**
-
-| Channel | Providers |
-|---|---|
-| Email | Mailpit (local), Gmail SMTP, Brevo |
-| SMS | Console (dev), textbee.dev, Twilio (mock-tested adapter) |
-| Push | Firebase Cloud Messaging, Web Push (VAPID) |
-| Chat | Telegram Bot API, Discord webhooks, Slack webhooks |
-| In-app | Built-in Socket.IO gateway |
-| Webhook | Built-in HMAC-signed dispatcher |
+| API & worker | [NestJS](https://nestjs.com/) 12, TypeScript (ESM), Node.js |
+| Accounts & API keys | PostgreSQL + [Prisma](https://www.prisma.io/) 7 |
+| Notifications & history | MongoDB + Mongoose |
+| Queues, codes, idempotency | Redis + [BullMQ](https://docs.bullmq.io/) |
+| Email | nodemailer (SMTP), Brevo REST API |
+| Templates | Handlebars |
+| Validation | class-validator (requests), zod (configuration) |
+| Auth | argon2id (passwords), JWT, SHA-256 hashed API keys |
+| Docs & tools | Swagger (`@nestjs/swagger`), Bull Board, Mailpit |
+| Testing & quality | Vitest, Supertest, oxlint, Prettier |
 
 ---
 
 ## Repository structure
 
 ```
-notifyhub/
-├── apps/
-│   ├── api/                  # NestJS REST API + WebSocket gateway
-│   ├── worker/               # NestJS standalone app running BullMQ processors
-│   └── dashboard/            # Next.js admin dashboard
-├── packages/
-│   ├── database/             # Prisma schema, migrations, seed, generated client
-│   ├── core/                 # Shared domain types, DTOs, enums
-│   ├── providers/            # Provider interfaces + adapters (email, sms, push, chat)
-│   ├── templates/            # Handlebars / MJML rendering
-│   ├── sdk-node/             # @notifyhub/node
-│   └── inbox-react/          # @notifyhub/react <Inbox />
-├── examples/
-│   └── demo-shop/            # Tiny e-commerce app that uses the SDK
-├── docker/
-│   └── docker-compose.yml
-├── docs/
-│   └── architecture.md
-├── load-tests/
-│   └── trigger.k6.js
-├── .env.example
-├── pnpm-workspace.yaml
-└── package.json
+├── docker/docker-compose.yml   # PostgreSQL, MongoDB, Redis, Mailpit
+├── docs/                       # Guides (start at docs/README.md)
+├── prisma/                     # PostgreSQL schema + migrations
+├── src/
+│   ├── main.ts / worker.ts     # The two entry points: API and worker
+│   ├── auth/  api-keys/  otp/  # Accounts, login, email verification, API keys
+│   ├── events/                 # Sending endpoints: /v1/events/trigger, /v1/email/send
+│   ├── notifications/          # Notification storage + GET /v1/notifications/:id
+│   ├── channels/               # Channel definitions (email; SMS etc. later)
+│   ├── providers/              # Provider contract, registry with failover, SMTP, Brevo
+│   ├── queues/                 # BullMQ setup + queue dashboard
+│   ├── worker/                 # Job processors
+│   ├── templates/              # Handlebars rendering
+│   ├── config/                 # .env schema and defaults
+│   └── ...                     # health, mail, redis, database, common
+└── test/                       # End-to-end tests
 ```
-
-The Prisma schema lives in `packages/database` so both `api` and `worker` share one generated client and one set of migrations.
-
----
-
-## Getting started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 20 or later
-- [pnpm](https://pnpm.io/) 9 or later (`npm install -g pnpm`)
-- [Docker](https://www.docker.com/) and Docker Compose
-
-### 1. Clone and install
-
-```bash
-git clone https://github.com/<your-username>/notifyhub.git
-cd notifyhub
-pnpm install
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-```
-
-The defaults work with the Docker Compose setup out of the box.
-
-### 3. Start infrastructure
-
-```bash
-docker compose -f docker/docker-compose.yml up -d
-```
-
-This starts:
-
-| Service | Port | Notes |
-|---|---|---|
-| PostgreSQL | `5432` | Config data (Prisma) |
-| MongoDB | `27017` | Notification logs, in-app feed |
-| Redis | `6379` | BullMQ queues, idempotency, rate limits |
-| Mailpit | `1025` (SMTP), `8025` (UI) | Catches every email at http://localhost:8025 |
-
-### 4. Set up the database
-
-```bash
-pnpm db:generate     # generate the Prisma client
-pnpm db:migrate      # apply migrations
-pnpm db:seed         # optional: create a demo tenant + API key
-```
-
-### 5. Run the apps
-
-```bash
-pnpm dev             # api + worker + dashboard in parallel
-
-# or individually
-pnpm dev:api
-pnpm dev:worker
-pnpm dev:dashboard
-```
-
-| App | URL |
-|---|---|
-| API | http://localhost:3000 |
-| Swagger docs | http://localhost:3000/docs |
-| Dashboard | http://localhost:3002 |
-| Mailpit UI | http://localhost:8025 |
-
-### 6. Send your first notification
-
-```bash
-curl -X POST http://localhost:3000/v1/events/trigger \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: <your-api-key>" \
-  -d '{
-    "name": "order-shipped",
-    "to": { "subscriberId": "user_123", "email": "ali@example.com" },
-    "payload": { "orderId": "A42", "eta": "Tomorrow" },
-    "idempotencyKey": "order-A42-shipped"
-  }'
-```
-
-Then open http://localhost:8025 to see the email.
-
----
-
-## Environment variables
-
-| Variable | Example | Description |
-|---|---|---|
-| `NODE_ENV` | `development` | Runtime environment |
-| `API_PORT` | `3000` | Port for the API service |
-| `DATABASE_URL` | `postgresql://notifyhub:notifyhub@localhost:5432/notifyhub?schema=public` | PostgreSQL connection used by Prisma |
-| `MONGO_URL` | `mongodb://localhost:27017/notifyhub` | MongoDB for logs and in-app feed |
-| `REDIS_URL` | `redis://localhost:6379` | Redis for BullMQ, idempotency and rate limiting |
-| `ENCRYPTION_MASTER_KEY` | `<32-byte hex>` | AES-256-GCM key for provider credentials |
-| `API_KEY_PEPPER` | `<random string>` | Extra secret mixed into API key hashes |
-| `SMTP_HOST` | `localhost` | Default SMTP host (Mailpit in dev) |
-| `SMTP_PORT` | `1025` | Default SMTP port |
-| `IDEMPOTENCY_TTL_SECONDS` | `86400` | How long idempotency keys are remembered |
-| `WORKER_CONCURRENCY_EMAIL` | `10` | Email worker concurrency |
-| `WORKER_CONCURRENCY_SMS` | `5` | SMS worker concurrency |
-
-Generate a master key with:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-> Never commit `.env`. Only `.env.example` belongs in the repo.
-
----
-
-## Database (Prisma)
-
-PostgreSQL holds **configuration** (relational, low volume, needs consistency) and is managed with Prisma. MongoDB holds **high-volume logs** and the in-app feed and is accessed with Mongoose.
-
-**Postgres models** (`packages/database/prisma/schema.prisma`)
-
-| Model | Purpose |
-|---|---|
-| `Tenant` | An application using NotifyHub, with plan and rate limit |
-| `ApiKey` | Hashed keys with prefix and `dev` / `prod` environment |
-| `Subscriber` | End users of a tenant, with email, phone, push tokens, timezone |
-| `Workflow` | A trigger key such as `order-shipped`, with category |
-| `WorkflowStep` | Ordered steps: `channel`, `delay` or `digest` |
-| `Template` | Versioned per-channel content (Handlebars / MJML) |
-| `ProviderConfig` | Per-tenant provider choice, priority and encrypted credentials |
-| `Preference` | Subscriber opt-in/out per category and channel |
-| `WebhookEndpoint` | Client URLs to receive signed status events |
-
-**Mongo collections**
-
-| Collection | Purpose |
-|---|---|
-| `notifications` | One document per message per channel, with full status history (TTL index keeps storage small) |
-| `inbox_messages` | In-app feed with read / seen timestamps |
-
-**Common Prisma commands**
-
-```bash
-pnpm db:migrate              # create + apply a migration in dev (prisma migrate dev)
-pnpm db:deploy               # apply migrations in production (prisma migrate deploy)
-pnpm db:generate             # regenerate the client after schema changes
-pnpm db:studio               # open Prisma Studio
-pnpm db:reset                # drop, recreate and reseed the dev database
-```
-
----
-
-## Scripts
-
-| Script | Description |
-|---|---|
-| `pnpm dev` | Run all apps in watch mode |
-| `pnpm build` | Build all apps and packages |
-| `pnpm lint` | ESLint across the monorepo |
-| `pnpm format` | Prettier across the monorepo |
-| `pnpm test` | Unit tests |
-| `pnpm test:e2e` | End-to-end tests (uses Testcontainers) |
-| `pnpm db:*` | Prisma commands (see above) |
-| `pnpm load-test` | Run the k6 load test against a local API |
-
----
-
-## API overview
-
-All endpoints are versioned under `/v1` and authenticated with an `x-api-key` header. Full interactive docs are available at `/docs` (Swagger).
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/v1/events/trigger` | Trigger a workflow for a subscriber |
-| `GET` | `/v1/notifications/:id` | Get status and event history of a notification |
-| `POST` | `/v1/subscribers` | Create or upsert a subscriber |
-| `GET` | `/v1/subscribers/:id` | Get a subscriber |
-| `PATCH` | `/v1/subscribers/:id/preferences` | Update channel / category preferences |
-| `GET` | `/v1/inbox` | List in-app messages for a subscriber |
-| `POST` | `/v1/inbox/:id/read` | Mark a message as read |
-
-Trigger response:
-
-```json
-// 202 Accepted
-{ "status": "queued", "notificationId": "6650f1..." }
-
-// 200 OK (same idempotency key seen within 24h)
-{ "status": "duplicate", "notificationId": "6650f1..." }
-```
-
----
-
-## Adding a provider
-
-Every provider implements a single interface:
-
-```ts
-export interface ChannelProvider<TMessage> {
-  readonly id: string;          // 'gmail_smtp', 'textbee', 'fcm' ...
-  readonly channel: Channel;    // 'email' | 'sms' | 'push' | 'chat'
-  send(message: TMessage, credentials: Record<string, string>): Promise<SendResult>;
-  validateCredentials?(credentials: Record<string, string>): Promise<boolean>;
-}
-```
-
-Write the class, then register it:
-
-```ts
-ProvidersModule.forRoot({ extraProviders: [MyCustomSmsProvider] });
-```
-
-The core never changes. Providers return `retryable: false` for permanent failures (invalid email, bad phone number) so they are not retried.
 
 ---
 
 ## Design decisions
 
-- **BullMQ over Kafka** — job semantics (retries, delays, backoff, DLQ) come built in, and Redis is already needed for idempotency and rate limiting. Kafka would add operational cost without benefit at this scale.
-- **Postgres + Mongo split** — configuration is relational and needs consistency; delivery logs are append-heavy with flexible payloads and expire after 30 days.
-- **Prisma for Postgres** — type-safe queries shared across `api` and `worker`, with versioned migrations checked into the repo.
-- **One queue per channel** — a slow SMS provider never blocks email delivery, and each channel gets its own concurrency setting.
-- **Two-layer idempotency** — `SETNX` in Redis with a 24h TTL, plus a unique index in Mongo as a second guard if a worker crashes mid-job.
-- **Separate API and worker processes** — workers scale independently, and graceful shutdown lets in-flight jobs finish on `SIGTERM`.
-- **Encrypted credentials** — provider secrets are stored with AES-256-GCM and are never returned by the API.
+- **BullMQ over Kafka** — retries, delays, backoff and a dead-letter queue come built in, and Redis is already needed for verification codes and idempotency.
+- **PostgreSQL + MongoDB** — accounts and keys are relational and need consistency; notification logs are high-volume, append-heavy and expire after 30 days.
+- **One queue per channel** — a slow channel never blocks another, and each gets its own concurrency.
+- **Two-layer idempotency** — `SET NX` in Redis plus a unique index in MongoDB, so a repeated request never sends twice.
+- **Separate API and worker processes** — scale workers independently; accept requests even when workers are down.
+- **Provider failover with three failure kinds** — temporary (try next, retry later), provider (try next), message (stop) — so backups are used when they can help and never when they can't.
+- **Self-hosted configuration** — provider credentials live in the operator's `.env`, never in the database or API responses.
 
 ---
 
 ## Roadmap
 
-- [ ] **Phase 1 — Foundation:** monorepo, Docker Compose, Prisma schema, tenants + API keys, subscriber CRUD, synchronous email trigger, Swagger
-- [ ] **Phase 2 — Async and reliable:** worker app, BullMQ queues, retries + backoff, DLQ, Bull Board, idempotency, Mongo logs, Testcontainers
-- [ ] **Phase 3 — Channels and providers:** provider registry, Gmail / Brevo / textbee / Telegram / Discord, encrypted credentials, failover
-- [ ] **Phase 4 — In-app and real-time:** Socket.IO gateway, inbox API, `<Inbox />` component, Web Push + FCM
-- [ ] **Phase 5 — Smart features:** delays, digests, preferences, quiet hours, rate limiting, outbound webhooks
-- [ ] **Phase 6 — Dashboard and SDK:** Next.js dashboard, template editor, logs explorer, `@notifyhub/node` on npm, demo shop
-- [ ] **Phase 7 — Production polish:** OpenTelemetry, Prometheus + Grafana, Pino logging, k6 results, CI, live demo
+- [x] **Foundation:** Docker Compose, accounts + API keys, Swagger
+- [x] **Async and reliable:** worker, BullMQ queues, retries + backoff, dead-letter queue, Bull Board, idempotency, status history
+- [ ] **Channels and providers:** ~~provider registry~~ ✅, ~~SMTP + Brevo with failover~~ ✅, Telegram, Discord, SMS (console, textbee)
+- [ ] **In-app and real-time:** Socket.IO gateway, inbox API, `<Inbox />` component, Web Push + FCM
+- [ ] **Smart features:** subscribers, workflows, delays, digests, preferences, quiet hours, rate limiting, outbound webhooks
+- [ ] **Dashboard and SDK:** Next.js dashboard, template editor, logs explorer, `@notifyhub/node` on npm, demo app
+- [ ] **Production polish:** production Docker Compose + self-hosting guide, OpenTelemetry, metrics, structured logging, load tests, CI
 
 ---
 
 ## Contributing
 
 1. Fork the repo and create a branch: `git checkout -b feat/my-feature`
-2. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat(api): add subscriber endpoint`
-3. Make sure `pnpm lint` and `pnpm test` pass
-4. Open a pull request
+2. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat(providers): add SES email provider`
+3. Make sure `npm run lint`, `npm test` and `npm run test:e2e` pass
+4. **Update the docs** for anything that changes setup, configuration or the API (see [docs/README.md](docs/README.md#keeping-these-docs-up-to-date))
+5. Open a pull request
+
+Adding a provider or channel? Start with [the contributor guide](docs/contributing/adding-a-provider.md).
 
 ---
 

@@ -1,12 +1,8 @@
 import type { ConfigService } from '@nestjs/config';
 import nodemailer, { type Transporter } from 'nodemailer';
-import type { Env } from '../config/env.js';
+import type { Env } from '../../config/env.js';
 
-/**
- * One SMTP transport built from .env, shared by NotifyHub's own emails (MailService)
- * and the tenant email provider (SmtpEmailProvider), so both honour the same
- * host, TLS, credentials and timeouts.
- */
+/** The nodemailer transport for SmtpEmailProvider, built from SMTP_* in .env. */
 export function createSmtpTransport(
   config: ConfigService<Env, true>,
 ): Transporter {
@@ -14,8 +10,8 @@ export function createSmtpTransport(
   const pass = config.get('SMTP_PASS', { infer: true });
 
   return nodemailer.createTransport({
-    host: config.get('SMTP_HOST'),
-    port: config.get('SMTP_PORT'),
+    host: config.get('SMTP_HOST', { infer: true }),
+    port: config.get('SMTP_PORT', { infer: true }),
     secure: config.get('SMTP_SECURE'), // true = implicit TLS (port 465)
     auth: user ? { user, pass } : undefined, // Mailpit needs no auth
     // Don't let a hanging SMTP server block a request or worker slot forever.

@@ -1,26 +1,35 @@
-import { Module, type Type } from '@nestjs/common';
-import { SmtpEmailProvider } from './email/smtp-email.provider.js';
+import { Logger, Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { CHANNELS } from '../channels/channels.constants.js';
+import type { Env } from '../config/env.js';
 import { ProviderRegistry } from './provider.registry.js';
-import type { ChannelProvider } from './providers.interfaces.js';
+import { buildEnabledProviders } from './providers.catalog.js';
+
+const logger = new Logger('Providers');
 
 /**
- * Every built-in provider. Adding a provider = write one class + add it here.
- * Nothing else in the codebase changes.
+ * Builds the ProviderRegistry from .env (EMAIL_PROVIDERS, ...): only the
+ * providers the operator listed, in failover order. A channel with none is
+ * disabled. Used by the worker (notifications) and the API (OTP emails,
+ * rejecting disabled channels).
  */
-const BUILT_IN_PROVIDERS: Type<ChannelProvider>[] = [
-  SmtpEmailProvider,
-  // BrevoEmailProvider, ConsoleSmsProvider, TextbeeSmsProvider, TelegramProvider...
-];
-
 @Module({
   providers: [
-    ...BUILT_IN_PROVIDERS,
     {
       provide: ProviderRegistry,
-      // Nest creates each provider (with its own dependencies), then hands them all here.
-      useFactory: (...providers: ChannelProvider[]) =>
-        new ProviderRegistry(providers),
-      inject: BUILT_IN_PROVIDERS,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => {
+        const registry = new ProviderRegistry(buildEnabledProviders(config));
+        for (const channel of CHANNELS) {
+          const ids = registry.list(channel).map((p) => p.id);
+          logger.log(
+            ids.length > 0
+              ? `${channel}: ${ids.join(' → ')}${ids.length > 1 ? ' (failover order)' : ''}`
+              : `${channel}: disabled (no providers configured)`,
+          );
+        }
+        return registry;
+      },
     },
   ],
   exports: [ProviderRegistry],

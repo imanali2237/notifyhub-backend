@@ -1,22 +1,35 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import type { Transporter } from 'nodemailer';
 import type { EmailMessage } from '../../channels/email/email.interfaces.js';
 import type { Env } from '../../config/env.js';
-import { createSmtpTransport } from '../../mail/smtp-transport.factory.js';
-import type { ChannelProvider, SendResult } from '../providers.interfaces.js';
-import { SMTP_PERMANENT_ERROR_CODES } from './email-provider.constants.js';
+import type {
+  ChannelProvider,
+  SendFailureKind,
+  SendResult,
+} from '../providers.interfaces.js';
+import {
+  SMTP_AUTH_ERROR_CODE,
+  SMTP_AUTH_RESPONSE_CODES,
+  SMTP_MAILBOX_RESPONSE_CODES,
+  SMTP_MESSAGE_ERROR_CODES,
+  SMTP_MESSAGE_STATUS_SUBJECTS,
+} from './email-provider.constants.js';
+import { createSmtpTransport } from './smtp-transport.factory.js';
 
-interface SmtpError extends Error {
+export interface SmtpError extends Error {
   code?: string;
   responseCode?: number;
+  /** The server's full reply, e.g. "550 5.4.5 Daily sending quota exceeded". */
+  response?: string;
 }
 
+/** Enhanced status code in an SMTP reply ("5.1.1" → subject 1), if any. */
+const ENHANCED_STATUS = /\b[245]\.(\d{1,3})\.\d{1,3}\b/;
+
 /**
- * Sends through the SMTP server from .env (Mailpit locally).
- * Phase 3 replaces "one server from .env" with per-tenant provider configs.
+ * Sends through any SMTP server: Gmail, Outlook, Mailpit (local), your own...
+ * Settings: SMTP_HOST, SMTP_PORT, SMTP_FROM (+ SMTP_USER/PASS, SMTP_SECURE).
  */
-@Injectable()
 export class SmtpEmailProvider implements ChannelProvider<EmailMessage> {
   readonly id = 'smtp';
   readonly channel = 'email' as const;
@@ -25,7 +38,7 @@ export class SmtpEmailProvider implements ChannelProvider<EmailMessage> {
 
   constructor(config: ConfigService<Env, true>) {
     this.transporter = createSmtpTransport(config);
-    this.from = config.get('SMTP_FROM');
+    this.from = config.get('SMTP_FROM', { infer: true }) ?? '';
   }
 
   async send(message: EmailMessage): Promise<SendResult> {
@@ -39,20 +52,31 @@ export class SmtpEmailProvider implements ChannelProvider<EmailMessage> {
       const e = err as SmtpError;
       return {
         success: false,
-        retryable: this.isRetryable(e),
+        failure: classifySmtpError(e),
         error: e.message,
       };
     }
   }
+}
 
-  /**
-   * SMTP reply codes: 4xx = temporary ("try later") → retry,
-   * 5xx = permanent (e.g. 550 mailbox doesn't exist) → don't.
-   * No reply code at all = network problem (server down, timeout) → retry.
-   */
-  private isRetryable(e: SmtpError): boolean {
-    if (e.code && SMTP_PERMANENT_ERROR_CODES.includes(e.code)) return false;
-    if (e.responseCode && e.responseCode >= 500) return false;
-    return true;
+/**
+ * SMTP reply codes: 4xx = "try later" → temporary; no reply at all (server
+ * down, timeout) → temporary; login failures → provider; 5xx → depends on what
+ * it's about (see SMTP_MESSAGE_STATUS_SUBJECTS).
+ */
+export function classifySmtpError(e: SmtpError): SendFailureKind {
+  if (e.code && SMTP_MESSAGE_ERROR_CODES.includes(e.code)) return 'message';
+  if (e.code === SMTP_AUTH_ERROR_CODE) return 'provider';
+
+  const code = e.responseCode;
+  if (!code || code < 500) return 'temporary';
+  if (SMTP_AUTH_RESPONSE_CODES.includes(code)) return 'provider';
+
+  const subject = ENHANCED_STATUS.exec(e.response ?? '')?.[1];
+  if (subject !== undefined) {
+    return SMTP_MESSAGE_STATUS_SUBJECTS.includes(Number(subject))
+      ? 'message'
+      : 'provider';
   }
+  return SMTP_MAILBOX_RESPONSE_CODES.includes(code) ? 'message' : 'provider';
 }
