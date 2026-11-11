@@ -190,7 +190,7 @@ export class EventsService {
       );
     }
 
-    // 1. The recipient has the address this channel needs (email, phone...).
+    // 1. The recipient has the address this channel needs (email, subscriberId...).
     if (!dto.to[handler.recipientField]) {
       throw new BadRequestException(
         `to.${handler.recipientField} is required for the ${channel} channel`,

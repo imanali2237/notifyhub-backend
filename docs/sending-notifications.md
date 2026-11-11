@@ -5,6 +5,7 @@ also served by your installation at **`/docs`** (Swagger).
 
 - [Authentication](#authentication)
 - [Send an email](#send-an-email--post-v1emailsend)
+- [Send an in-app message](#send-an-in-app-message--post-v1in-appsend)
 - [Send on several channels](#send-on-several-channels--post-v1eventstrigger)
 - [The recipient (`to`)](#the-recipient-to)
 - [Templates](#templates)
@@ -26,7 +27,8 @@ x-api-key: nh_live_PQPKEqWDylmPxfyIpkIyodr8IFRt74w1
 
 Create keys with your account (see [Getting started](getting-started.md#6-create-an-api-key)).
 Keep them on your **server** — never in a browser or mobile app, where anyone
-could read them. A key only sees its own tenant's notifications.
+could read them. (Browsers use a short-lived [subscriber token](in-app-inbox.md#3-give-the-browser-a-token)
+instead.) A key only sees its own tenant's notifications.
 
 Check which tenant a key belongs to:
 
@@ -73,10 +75,37 @@ curl -X POST http://localhost:3000/v1/email/send \
 
 ---
 
+## Send an in-app message — `POST /v1/in-app/send`
+
+Puts a message in the user's inbox inside your app, delivered live over a
+WebSocket. Only `to.subscriberId` is needed.
+
+```json
+{
+  "to": { "subscriberId": "user_123", "name": "Sara" },
+  "payload": { "orderId": "A42" },
+  "title": "Order {{orderId}} shipped",
+  "body": "Hi {{subscriber.name}}, your order is on its way.",
+  "actionUrl": "/orders/{{orderId}}"
+}
+```
+
+| Field | Required | Rules |
+|---|---|---|
+| `body` | yes | 1–5,000 characters |
+| `title` | no | Up to 200 characters |
+| `actionUrl` | no | Starts with `/` or `http(s)://host`, written literally |
+| `payload`, `event`, `idempotencyKey` | no | Same as for email. `event` defaults to `in_app.send` |
+
+How your users see these messages (tokens, inbox API, WebSocket):
+[In-app inbox](in-app-inbox.md).
+
+---
+
 ## Send on several channels — `POST /v1/events/trigger`
 
-One request, one notification **per channel**. Today the only channel is
-`email`; SMS, Telegram and others will be added under `channels` the same way.
+One request, one notification **per channel**. Channels today: `email` and
+`in_app`; SMS, Telegram and others will be added under `channels` the same way.
 
 ```json
 {
@@ -87,6 +116,11 @@ One request, one notification **per channel**. Today the only channel is
     "email": {
       "subject": "Order {{orderId}} shipped",
       "html": "<p>Hi {{subscriber.name}}, order <b>{{orderId}}</b> shipped.</p>"
+    },
+    "in_app": {
+      "title": "Order {{orderId}} shipped",
+      "body": "It arrives tomorrow.",
+      "actionUrl": "/orders/{{orderId}}"
     }
   },
   "idempotencyKey": "order-A42-shipped"
@@ -97,7 +131,7 @@ One request, one notification **per channel**. Today the only channel is
 |---|---|---|
 | `event` | **yes** | Same format as above |
 | `to` | yes | Must contain the address each requested channel needs |
-| `channels` | yes | At least one channel. `channels.email` takes `subject`, `html`, `text` (same rules as `/v1/email/send`) |
+| `channels` | yes | At least one channel. `channels.email` takes `subject`, `html`, `text` (same rules as `/v1/email/send`); `channels.in_app` takes `title`, `body`, `actionUrl` (same rules as `/v1/in-app/send`) |
 | `payload`, `idempotencyKey` | no | Same as above |
 
 Both endpoints go through the exact same pipeline (validation, idempotency,
@@ -109,9 +143,8 @@ queue, worker, providers) — pick whichever shape you prefer.
 
 | Field | Required | Rules |
 |---|---|---|
-| `subscriberId` | yes | **Your** app's id for this person (1–200 characters) |
+| `subscriberId` | yes | **Your** app's id for this person (1–200 characters). The in-app inbox is addressed by it |
 | `email` | for email | Valid email; trimmed and lowercased |
-| `phone` | for phone channels (future) | E.164 format, e.g. `+923001234567` |
 | `name` | no | Max 200 characters; available as `{{subscriber.name}}` |
 
 ---
@@ -242,7 +275,7 @@ Errors have this shape:
 
 | Code | When | What to do |
 |---|---|---|
-| `400` | Invalid body; unknown field; missing `to.email`; no `html`/`text`; template syntax error; **email channel not enabled** on this server | Fix the request (or the server's [providers](email-providers.md)). Don't retry unchanged |
+| `400` | Invalid body; unknown field; missing `to.email`; no `html`/`text`; empty in-app `body`; bad `actionUrl`; template syntax error; **channel not enabled** on this server | Fix the request (or the server's [providers](email-providers.md)). Don't retry unchanged |
 | `401` | Missing, invalid or revoked API key | Check the `x-api-key` header |
 | `404` | Notification not found, or it belongs to another tenant | Check the id and the key |
 | `503` | Redis / queue temporarily unavailable — nothing was saved | Retry with backoff, using the same `idempotencyKey` |
@@ -263,7 +296,14 @@ Errors have this shape:
 | `DELETE` | `/v1/api-keys/:id` | JWT | Revoke a key |
 | `GET` | `/v1/api-keys/current` | API key | Which tenant this key belongs to |
 | `POST` | `/v1/email/send` | API key | Send an email |
+| `POST` | `/v1/in-app/send` | API key | Send an in-app inbox message |
 | `POST` | `/v1/events/trigger` | API key | Send on one or more channels |
+| `POST` | `/v1/inbox/tokens` | API key | Create a subscriber token for the inbox UI |
+| `GET` | `/v1/inbox/messages` | Subscriber token | The user's inbox, newest first |
+| `GET` | `/v1/inbox/unread-count` | Subscriber token | Unread count for the badge |
+| `POST` | `/v1/inbox/messages/:id/read` | Subscriber token | Mark one message read |
+| `POST` | `/v1/inbox/read-all` | Subscriber token | Mark all read |
+| WS | `/inbox` (Socket.IO) | Subscriber token | Live `notification` and `unread_count` events |
 | `GET` | `/v1/notifications/:id` | API key | Status and history of a notification |
 | `GET` | `/health` | — | `{ status, services: { postgres, mongo, redis } }` |
 

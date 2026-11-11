@@ -69,6 +69,9 @@ own emails (signup verification codes).
 | `SMTP_PASS` | no | — | Password / app password / SMTP key |
 | `SMTP_CONNECTION_TIMEOUT_MS` | no | `10000` | Give up connecting after this long (then the next provider is tried) |
 | `SMTP_SOCKET_TIMEOUT_MS` | no | `20000` | Give up on a silent connection after this long |
+| `SMTP_POOL` | no | `true` | Reuse open connections instead of opening one per email (much faster) |
+| `SMTP_MAX_CONNECTIONS` | no | `5` | Open connections per worker process. Lower it if your provider limits simultaneous connections |
+| `SMTP_MAX_MESSAGES` | no | `100` | Emails per connection before it is replaced |
 
 ### Mailpit (local testing — the default)
 

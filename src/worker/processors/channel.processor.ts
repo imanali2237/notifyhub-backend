@@ -107,7 +107,11 @@ export abstract class ChannelProcessor
     // 2. Send through the channel's providers, in the operator's failover order.
     const result = await this.providers.send(
       this.channel,
-      handler.buildMessage(address, rendered),
+      handler.buildMessage(address, rendered, {
+        notificationId,
+        tenantId: notification.tenantId,
+        environment: notification.environment,
+      }),
     );
     for (const failed of result.failedAttempts) {
       this.logger.warn(

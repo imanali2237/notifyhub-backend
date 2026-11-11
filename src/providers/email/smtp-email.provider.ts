@@ -41,6 +41,11 @@ export class SmtpEmailProvider implements ChannelProvider<EmailMessage> {
     this.from = config.get('SMTP_FROM', { infer: true }) ?? '';
   }
 
+  /** Closes pooled connections (on shutdown). */
+  close(): void {
+    this.transporter.close();
+  }
+
   async send(message: EmailMessage): Promise<SendResult> {
     try {
       const info = await this.transporter.sendMail({

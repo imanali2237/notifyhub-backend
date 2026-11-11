@@ -1,6 +1,7 @@
 import type { Channel } from './channels.constants.js';
 import type { ChannelHandler } from './channels.interfaces.js';
 import { emailChannel } from './email/email.channel.js';
+import { inAppChannel } from './in-app/in-app.channel.js';
 
 /**
  * Registry: channel name → handler. `Record<Channel, ...>` makes TypeScript
@@ -8,4 +9,5 @@ import { emailChannel } from './email/email.channel.js';
  */
 export const CHANNEL_HANDLERS: Record<Channel, ChannelHandler> = {
   email: emailChannel,
+  in_app: inAppChannel,
 };

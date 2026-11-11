@@ -43,7 +43,6 @@ export class Notification {
     raw({
       subscriberId: String,
       email: String,
-      phone: String,
       name: String,
       _id: false,
     }),

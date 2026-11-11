@@ -2,8 +2,10 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { corsOrigin } from './common/http/cors.js';
 import { setupSwagger } from './common/swagger/swagger.setup.js';
 import type { Env } from './config/env.js';
+import { RedisIoAdapter } from './inbox/redis-io.adapter.js';
 import { setupBullBoard } from './queues/bull-board.setup.js';
 
 async function bootstrap() {
@@ -18,6 +20,13 @@ async function bootstrap() {
       transform: true, // turn the JSON into a real DTO instance (runs @Transform)
     }),
   );
+
+  // Browsers may call the API from these websites (the in-app inbox UI).
+  // Auth is by header (API key / Bearer token), never cookies.
+  app.enableCors({ origin: corsOrigin(config.get('CORS_ORIGINS')) });
+
+  // WebSockets (in-app inbox) through Redis, so the worker can push messages.
+  app.useWebSocketAdapter(new RedisIoAdapter(app));
 
   // Lets onModuleDestroy / onApplicationShutdown run on Ctrl+C / SIGTERM.
   app.enableShutdownHooks();

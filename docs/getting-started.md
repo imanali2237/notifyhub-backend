@@ -150,6 +150,7 @@ your API key under `api-key`, and try the endpoints from the browser.
 
 - Send real email: [Email providers](email-providers.md)
 - Call NotifyHub from your app: [Sending notifications](sending-notifications.md)
+- Show a live notification inbox in your app: [In-app inbox](in-app-inbox.md)
 - Tune retries, timeouts, security: [Configuration reference](configuration.md)
 
 ## Useful commands

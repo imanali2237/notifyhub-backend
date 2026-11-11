@@ -532,8 +532,8 @@ Free-tier limits of third-party providers (Brevo, textbee, ...) change over time
 - [ ] Channel fallback in workflows (push failed → Telegram)
 
 ### Phase 4 — In-app and real-time (Week 7)
-- [ ] Socket.IO gateway with Redis adapter, subscriber auth via signed HMAC hash
-- [ ] Inbox API: list, unread count, mark read / mark all read
+- [x] Socket.IO gateway with Redis adapter, subscriber auth via short-lived subscriber tokens
+- [x] Inbox API: list, unread count, mark read / mark all read
 - [ ] `@notifyhub/react` `<Inbox />` component
 - [ ] Web Push (VAPID) + FCM
 

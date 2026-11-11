@@ -85,3 +85,42 @@ describe('validateEnv — email providers', () => {
     ).not.toThrow();
   });
 });
+
+describe('validateEnv — in-app inbox and CORS', () => {
+  it('defaults: in-app on, tokens last 12h, any origin', () => {
+    const env = validateEnv(base);
+    expect(env.IN_APP_ENABLED).toBe(true);
+    expect(env.INBOX_TOKEN_EXPIRES_IN).toBe('12h');
+    expect(env.CORS_ORIGINS).toEqual(['*']);
+  });
+
+  it('parses a list of origins', () => {
+    expect(
+      validateEnv({
+        ...base,
+        CORS_ORIGINS: 'https://app.example.com, http://localhost:5173',
+      }).CORS_ORIGINS,
+    ).toEqual(['https://app.example.com', 'http://localhost:5173']);
+  });
+
+  it('an empty value means the default', () => {
+    expect(validateEnv({ ...base, CORS_ORIGINS: '' }).CORS_ORIGINS).toEqual([
+      '*',
+    ]);
+  });
+
+  it.each(['app.example.com', 'https://app.example.com/', ' , '])(
+    'rejects CORS_ORIGINS=%j',
+    (value) => {
+      expect(() => validateEnv({ ...base, CORS_ORIGINS: value })).toThrow(
+        /CORS_ORIGINS/,
+      );
+    },
+  );
+
+  it('rejects a malformed token lifetime', () => {
+    expect(() =>
+      validateEnv({ ...base, INBOX_TOKEN_EXPIRES_IN: '12 hours' }),
+    ).toThrow(/INBOX_TOKEN_EXPIRES_IN must look like/);
+  });
+});

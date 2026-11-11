@@ -130,4 +130,23 @@ describe('ProviderRegistry', () => {
       failedAttempts: [{ providerId: 'buggy', failure: 'temporary' }],
     });
   });
+
+  it('close() closes every provider that can, even if one fails', async () => {
+    const closed: string[] = [];
+    const withClose = (id: string, fail = false): ChannelProvider => ({
+      ...ok(id).provider,
+      close: () => {
+        if (fail) throw new Error('boom');
+        closed.push(id);
+      },
+    });
+    const registry = new ProviderRegistry([
+      withClose('brevo', true),
+      ok('plain').provider, // no close()
+      withClose('smtp'),
+    ]);
+
+    await expect(registry.close()).resolves.toBeUndefined();
+    expect(closed).toEqual(['smtp']);
+  });
 });

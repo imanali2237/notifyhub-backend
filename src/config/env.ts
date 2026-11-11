@@ -58,6 +58,29 @@ export const envSchema = z
       .enum(['development', 'test', 'production'])
       .default('development'),
     PORT: int(DEFAULTS.PORT),
+    // Websites allowed to call the API from a browser (the in-app inbox UI):
+    // "*" = any, or a comma-separated list: "https://app.example.com,http://localhost:5173"
+    CORS_ORIGINS: z
+      .preprocess((v) => (v === '' ? undefined : v), z.string().optional())
+      .transform((v) => v ?? DEFAULTS.CORS_ORIGINS)
+      .transform((v) =>
+        v
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean),
+      )
+      .pipe(
+        z
+          .array(
+            z
+              .string()
+              .refine((o) => o === '*' || /^https?:\/\/[^/]+$/.test(o), {
+                message:
+                  'each origin must look like https://app.example.com (no path, no trailing slash) or be *',
+              }),
+          )
+          .min(1),
+      ),
 
     // ── Databases (required) ──
     DATABASE_URL: z.url(),
@@ -84,11 +107,27 @@ export const envSchema = z
     SMTP_PASS: optionalString(),
     SMTP_CONNECTION_TIMEOUT_MS: int(DEFAULTS.SMTP_CONNECTION_TIMEOUT_MS),
     SMTP_SOCKET_TIMEOUT_MS: int(DEFAULTS.SMTP_SOCKET_TIMEOUT_MS),
+    // Keep connections open and reuse them (much faster for many emails).
+    SMTP_POOL: bool(DEFAULTS.SMTP_POOL),
+    SMTP_MAX_CONNECTIONS: int(DEFAULTS.SMTP_MAX_CONNECTIONS),
+    SMTP_MAX_MESSAGES: int(DEFAULTS.SMTP_MAX_MESSAGES),
 
     // Brevo (REST API). Required when EMAIL_PROVIDERS includes "brevo".
     BREVO_API_KEY: optionalString(),
     BREVO_FROM: optionalString(), // a sender verified in your Brevo account
     BREVO_TIMEOUT_MS: int(DEFAULTS.BREVO_TIMEOUT_MS),
+
+    // ── In-app inbox ──
+    // false → the in_app channel is disabled (no inbox, no WebSocket updates)
+    IN_APP_ENABLED: bool(DEFAULTS.IN_APP_ENABLED),
+    // How long a subscriber token (POST /v1/inbox/tokens) works: 15m, 12h, 7d...
+    INBOX_TOKEN_EXPIRES_IN: z
+      .string()
+      .regex(
+        /^\d+[smhd]$/,
+        'INBOX_TOKEN_EXPIRES_IN must look like 15m, 12h or 7d',
+      )
+      .default(DEFAULTS.INBOX_TOKEN_EXPIRES_IN),
 
     // ── Secrets (required) ──
     // Secret key for HMAC-hashing OTP codes before they are stored in Redis.
@@ -120,6 +159,7 @@ export const envSchema = z
 
     // ── Workers ──
     EMAIL_WORKER_CONCURRENCY: int(DEFAULTS.EMAIL_WORKER_CONCURRENCY),
+    IN_APP_WORKER_CONCURRENCY: int(DEFAULTS.IN_APP_WORKER_CONCURRENCY),
 
     // ── Trigger API ──
     IDEMPOTENCY_TTL_SECONDS: int(DEFAULTS.IDEMPOTENCY_TTL_SECONDS),

@@ -8,12 +8,11 @@ export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
 /**
  * Who receives it. One recipient can be reached on several channels;
- * each channel picks the field it needs (email → email, sms → phone).
+ * each channel picks the field it needs (email → email, in_app → subscriberId).
  */
 export interface Recipient {
   subscriberId: string; // the client app's own user id
   email?: string;
-  phone?: string; // E.164, e.g. +923001234567
   name?: string;
 }
 

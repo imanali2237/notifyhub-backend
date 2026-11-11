@@ -3,16 +3,14 @@ import {
   IsEmail,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { NormalizeEmail } from '../../common/transformers/normalize-email.transformer.js';
-import { E164_PHONE_PATTERN } from '../events.constants.js';
 
 /**
  * Who receives the notification. Contact fields are optional here; each channel
- * requires the one it needs (email channel → email, sms channel → phone).
+ * requires the one it needs (email channel → email; in_app needs only subscriberId).
  */
 export class RecipientDto {
   @ApiProperty({
@@ -34,17 +32,6 @@ export class RecipientDto {
   @NormalizeEmail()
   @IsEmail()
   email?: string;
-
-  @ApiPropertyOptional({
-    description: 'E.164 format. Required by phone channels (e.g. SMS).',
-    example: '+923001234567',
-    pattern: E164_PHONE_PATTERN.source,
-  })
-  @IsOptional()
-  @Matches(E164_PHONE_PATTERN, {
-    message: 'phone must be in E.164 format, e.g. +923001234567',
-  })
-  phone?: string;
 
   @ApiPropertyOptional({
     description: 'Available in templates as {{subscriber.name}}',
