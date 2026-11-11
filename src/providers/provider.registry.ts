@@ -32,6 +32,13 @@ export class ProviderRegistry {
     return this.byChannel.get(channel) ?? [];
   }
 
+  /** Lets every provider close its connections (called on shutdown). */
+  async close(): Promise<void> {
+    const all = [...this.byChannel.values()].flat();
+    // async wrapper: a provider that throws synchronously becomes a rejection
+    await Promise.allSettled(all.map(async (p) => p.close?.()));
+  }
+
   /**
    * Tries each provider in order until one succeeds (failover):
    *  - temporary / provider failure → try the next provider

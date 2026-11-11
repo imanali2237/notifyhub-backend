@@ -1,3 +1,4 @@
+import type { ApiKeyEnvironment } from '../generated/prisma/client.js';
 import type { Recipient } from '../notifications/notifications.interfaces.js';
 import type { Channel } from './channels.constants.js';
 
@@ -11,8 +12,22 @@ export type ChannelContent = Record<string, string | undefined>;
  */
 export type TemplateFieldMode = 'html' | 'plain';
 
-/** Recipient fields a channel can deliver to. */
-export type RecipientAddressField = keyof Pick<Recipient, 'email' | 'phone'>;
+/**
+ * Recipient fields a channel can deliver to: to.email, or to.subscriberId for
+ * the in-app inbox (the user is identified by your app's id).
+ * A phone channel (SMS) would add `phone` to Recipient and here.
+ */
+export type RecipientAddressField = keyof Pick<
+  Recipient,
+  'email' | 'subscriberId'
+>;
+
+/** The notification being sent — for channels that need more than an address. */
+export interface NotificationContext {
+  notificationId: string;
+  tenantId: string;
+  environment: ApiKeyEnvironment;
+}
 
 /**
  * Everything the generic core needs to know about one channel.
@@ -22,7 +37,7 @@ export type RecipientAddressField = keyof Pick<Recipient, 'email' | 'phone'>;
 export interface ChannelHandler<TMessage = unknown> {
   readonly channel: Channel;
 
-  /** Which recipient field this channel sends to: to.email, to.phone... */
+  /** Which recipient field this channel sends to: to.email, to.subscriberId... */
   readonly recipientField: RecipientAddressField;
 
   /** Which content fields are templates, and how to render each one. */
@@ -32,5 +47,9 @@ export interface ChannelHandler<TMessage = unknown> {
   validateContent(content: ChannelContent): string | null;
 
   /** Turns rendered content into the message the channel's providers accept. */
-  buildMessage(address: string, rendered: ChannelContent): TMessage;
+  buildMessage(
+    address: string,
+    rendered: ChannelContent,
+    notification: NotificationContext,
+  ): TMessage;
 }

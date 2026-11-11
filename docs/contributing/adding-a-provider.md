@@ -116,6 +116,10 @@ export const EMAIL_PROVIDER_CATALOG = {
 
 TypeScript reports an error here until the id from step 2 has a factory.
 
+A factory only gets `config`. A built-in provider that needs other services
+(like the in-app `InboxProvider`, which needs MongoDB and Redis) gets them
+through `ProviderDeps`, see `buildEnabledProviders`.
+
 ### 5. Test it — `src/providers/email/ses-email.provider.spec.ts`
 
 Mock the network (`vi.spyOn(globalThis, 'fetch')` or the SDK client) and cover:

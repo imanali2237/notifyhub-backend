@@ -64,6 +64,8 @@ buttons. See [configuration](configuration.md#queue-dashboard-bull-board).
 - `EMAIL_WORKER_CONCURRENCY` (default `5`) = emails **one worker process**
   sends at the same time. Sending is mostly waiting on the network, so this is
   cheap to raise.
+- `IN_APP_WORKER_CONCURRENCY` (default `10`) = in-app messages saved at the
+  same time. These only write to MongoDB and Redis, so they are fast.
 - Run **more worker processes** (same command, same `.env`, any machine that
   reaches Redis and MongoDB) for more throughput or to survive a crashed
   worker. Each job is locked by one worker, so nothing is sent twice by two
@@ -71,9 +73,17 @@ buttons. See [configuration](configuration.md#queue-dashboard-bull-board).
 - Total in-flight emails = worker processes × concurrency.
 - The real limit is usually your **provider's** rate limit. If you see
   rate-limit errors, lower concurrency rather than raising it.
+- Keep `SMTP_POOL=true` (default). Without it every email opens a new
+  connection and logs in again: about 15× slower in [our load tests](scaling.md#8-measured-performance).
+- The **API** can be scaled the same way: run several instances behind a load
+  balancer. They share nothing but Redis, MongoDB and PostgreSQL, and the
+  inbox WebSocket works across instances (Redis adapter).
 
-Rough cost of one worker: ~150–200 MB RAM, a small fraction of a CPU core,
-3 Redis connections and a few MongoDB connections.
+Rough cost of one worker: ~150–400 MB RAM (it grows under load), a small
+fraction of a CPU core, 3 Redis connections and a few MongoDB connections.
+
+Step-by-step guide (running several workers and API instances, load
+balancer, Redis settings, measured numbers): **[Scaling NotifyHub](scaling.md)**.
 
 ## Delivery guarantee
 

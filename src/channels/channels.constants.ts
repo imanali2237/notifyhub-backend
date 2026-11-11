@@ -3,7 +3,7 @@
  * the checklist in channels/README.md — TypeScript then points at every place
  * that still needs a handler, queue, provider and processor.
  */
-export const CHANNELS = ['email'] as const;
+export const CHANNELS = ['email', 'in_app'] as const;
 
 export type Channel = (typeof CHANNELS)[number];
 
@@ -13,6 +13,7 @@ export type Channel = (typeof CHANNELS)[number];
  */
 export const CHANNEL_QUEUES: Record<Channel, string> = {
   email: 'notifications.email',
+  in_app: 'notifications.in_app',
 };
 
 /**
@@ -21,4 +22,5 @@ export const CHANNEL_QUEUES: Record<Channel, string> = {
  */
 export const CHANNEL_CONCURRENCY_SETTING = {
   email: 'EMAIL_WORKER_CONCURRENCY',
+  in_app: 'IN_APP_WORKER_CONCURRENCY',
 } as const satisfies Record<Channel, string>;

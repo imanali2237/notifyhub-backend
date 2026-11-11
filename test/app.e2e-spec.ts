@@ -68,10 +68,21 @@ describe('App (e2e)', () => {
       '/v1/auth/verify-email',
       '/v1/email/send',
       '/v1/events/trigger',
+      '/v1/in-app/send',
+      '/v1/inbox/messages',
+      '/v1/inbox/messages/{id}/read',
+      '/v1/inbox/read-all',
+      '/v1/inbox/tokens',
+      '/v1/inbox/unread-count',
       '/v1/notifications/{id}',
     ]);
     expect(security('/v1/events/trigger', 'post')).toEqual([{ 'api-key': [] }]);
     expect(security('/v1/email/send', 'post')).toEqual([{ 'api-key': [] }]);
+    expect(security('/v1/in-app/send', 'post')).toEqual([{ 'api-key': [] }]);
+    expect(security('/v1/inbox/tokens', 'post')).toEqual([{ 'api-key': [] }]);
+    expect(security('/v1/inbox/messages', 'get')).toEqual([
+      { 'subscriber-token': [] },
+    ]);
     expect(security('/v1/api-keys', 'post')).toEqual([{ jwt: [] }]);
     expect(security('/v1/auth/login', 'post')).toBeUndefined();
   });

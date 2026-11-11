@@ -26,6 +26,8 @@ export interface ChannelProvider<TMessage = unknown> {
   readonly id: string;
   readonly channel: Channel;
   send(message: TMessage): Promise<SendResult>;
+  /** Optional: release open connections when the process shuts down. */
+  close?(): void | Promise<void>;
 }
 
 /** One provider that was tried and failed. */

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NotifyHub inbox demo</title>
+  <!-- Socket.IO browser client -->
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.4/dist/socket.io.min.js"></script>
+  <style>
+    :root { --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb; --accent: #4f46e5; --unread: #eef2ff; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111318; --card: #1a1d24; --text: #e8eaf0; --muted: #9aa1ad; --line: #2a2f39; --accent: #8b87ff; --unread: #23263a; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 560px; margin: 32px auto; padding: 0 16px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.hint { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; margin-bottom: 10px; }
+    button { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+    button.link { background: none; color: var(--accent); padding: 0; }
+    .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .bell { position: relative; font-size: 22px; }
+    .badge { position: absolute; top: -6px; right: -10px; min-width: 20px; padding: 0 6px; border-radius: 10px; background: #e11d48; color: #fff; font-size: 12px; text-align: center; }
+    .status { font-size: 13px; color: var(--muted); }
+    ul { list-style: none; margin: 12px 0 0; padding: 0; }
+    li { border-top: 1px solid var(--line); padding: 10px 8px; cursor: pointer; border-radius: 6px; }
+    li.unread { background: var(--unread); }
+    li .title { font-weight: 600; }
+    li .meta { color: var(--muted); font-size: 12px; }
+    .empty { color: var(--muted); padding: 16px 0 4px; text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>NotifyHub inbox demo</h1>
+  <p class="hint">
+    What your users would see inside your app. Get a token with
+    <code>POST /v1/inbox/tokens</code> (see docs/in-app-inbox.md), paste it, connect,
+    then send messages with <code>POST /v1/in-app/send</code>: they appear here instantly.
+  </p>
+
+  <div class="card">
+    <label for="api">NotifyHub URL</label>
+    <input id="api" value="http://localhost:3000" />
+    <label for="token">Subscriber token</label>
+    <input id="token" placeholder="eyJhbGciOi..." />
+    <button id="connect">Connect</button>
+  </div>
+
+  <div class="card">
+    <div class="bar">
+      <span class="bell">🔔<span class="badge" id="badge" hidden>0</span></span>
+      <span class="status" id="status">Not connected</span>
+      <button class="link" id="readAll">Mark all read</button>
+    </div>
+    <ul id="list"></ul>
+    <div class="empty" id="empty">No messages yet</div>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let socket, api, token, messages = [];
+
+  const call = (path, method = 'GET') =>
+    fetch(api + path, { method, headers: { Authorization: 'Bearer ' + token } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status + ' ' + r.statusText))));
+
+  function setBadge(count) {
+    $('badge').hidden = count === 0;
+    $('badge').textContent = count > 99 ? '99+' : count;
+  }
+
+  function render() {
+    $('empty').hidden = messages.length > 0;
+    $('list').replaceChildren(...messages.map((m) => {
+      const li = document.createElement('li');
+      li.className = m.read ? '' : 'unread';
+      // textContent, never innerHTML: messages are plain text
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = m.title ?? '';
+      const body = document.createElement('div');
+      body.textContent = m.body;
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = new Date(m.createdAt).toLocaleString() + (m.actionUrl ? ' · ' + m.actionUrl : '');
+      li.append(title, body, meta);
+      li.onclick = () => markRead(m);
+      return li;
+    }));
+  }
+
+  async function markRead(m) {
+    if (!m.read) Object.assign(m, await call('/v1/inbox/messages/' + m.id + '/read', 'POST'));
+    render();
+    // A real app would now navigate: if (m.actionUrl) location.href = m.actionUrl
+  }
+
+  $('readAll').onclick = async () => {
+    await call('/v1/inbox/read-all', 'POST');
+    messages.forEach((m) => (m.read = true));
+    render();
+  };
+
+  $('connect').onclick = async () => {
+    api = $('api').value.replace(/\/$/, '');
+    token = $('token').value.trim();
+    socket?.disconnect();
+
+    try {
+      // 1. Load what's already in the inbox
+      const page = await call('/v1/inbox/messages?limit=50');
+      messages = page.messages;
+      setBadge(page.unreadCount);
+      render();
+    } catch (err) {
+      $('status').textContent = 'Could not load inbox: ' + err.message;
+      return;
+    }
+
+    // 2. Listen for new messages
+    socket = io(api + '/inbox', { auth: { token } });
+    socket.on('connect', () => ($('status').textContent = 'Live ●'));
+    socket.on('disconnect', () => ($('status').textContent = 'Disconnected'));
+    socket.on('connect_error', (err) => ($('status').textContent = 'Error: ' + err.message));
+    socket.on('notification', ({ message, unreadCount }) => {
+      if (!messages.some((m) => m.id === message.id)) messages.unshift(message);
+      setBadge(unreadCount);
+      render();
+    });
+    socket.on('unread_count', ({ unreadCount }) => setBadge(unreadCount));
+  };
+</script>
+</body>
+</html>

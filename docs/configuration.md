@@ -21,7 +21,8 @@ Booleans accept `true`/`false` (also `1`/`0`, `yes`/`no`).
 | Setting | Default | Description |
 |---|---|---|
 | `NODE_ENV` | `development` | `development`, `test` or `production`. Affects the queue dashboard's security (see below) |
-| `PORT` | `3000` | API port. Swagger and the queue dashboard are served on it too |
+| `PORT` | `3000` | API port. Swagger, the queue dashboard and the inbox WebSocket are served on it too |
+| `CORS_ORIGINS` | `*` | Websites allowed to call the API from a browser (the [in-app inbox](in-app-inbox.md) UI): `*` = any, or a comma-separated list like `https://app.example.com,http://localhost:5173` (no path, no trailing slash). Restrict it in production |
 
 ## Databases (required)
 
@@ -50,7 +51,7 @@ Generate each with `openssl rand -hex 32`.
 | Setting | Rules | Description |
 |---|---|---|
 | `OTP_SECRET` | min 32 characters | Verification codes are stored hashed with this key |
-| `JWT_SECRET` | min 32 characters | Signs login tokens. **Changing it logs everyone out** |
+| `JWT_SECRET` | min 32 characters | Signs login tokens and (through a derived key) inbox subscriber tokens. **Changing it logs everyone out** |
 
 ## Accounts and login
 
@@ -89,6 +90,9 @@ Full guide: [email-providers.md](email-providers.md).
 | `SMTP_PASS` | — | Password / app password |
 | `SMTP_CONNECTION_TIMEOUT_MS` | `10000` | Max time to connect |
 | `SMTP_SOCKET_TIMEOUT_MS` | `20000` | Max silence on an open connection |
+| `SMTP_POOL` | `true` | Keep connections open and reuse them. `false` = a new connection (and login) for every email: much slower |
+| `SMTP_MAX_CONNECTIONS` | `5` | Open connections **per worker process** when pooling. Some providers limit simultaneous connections; lower it if you get connection errors |
+| `SMTP_MAX_MESSAGES` | `100` | Emails sent over one connection before it is replaced |
 
 **Brevo** — required when `EMAIL_PROVIDERS` includes `brevo`:
 
@@ -97,6 +101,15 @@ Full guide: [email-providers.md](email-providers.md).
 | `BREVO_API_KEY` | required for `brevo` | API key from Brevo → SMTP & API → API Keys |
 | `BREVO_FROM` | required for `brevo` | A sender verified in Brevo: `"Name <email>"` or `email` |
 | `BREVO_TIMEOUT_MS` | `10000` | Max wait for Brevo's API before trying the next provider |
+
+## In-app inbox
+
+Full guide: [in-app-inbox.md](in-app-inbox.md).
+
+| Setting | Default | Description |
+|---|---|---|
+| `IN_APP_ENABLED` | `true` | `false` disables the `in_app` channel (sending and new subscriber tokens get `400`) |
+| `INBOX_TOKEN_EXPIRES_IN` | `12h` | How long a subscriber token works: `15m`, `12h`, `7d`... Signed with a key derived from `JWT_SECRET` |
 
 ## Sending (trigger API)
 
@@ -124,6 +137,7 @@ Changes apply to **new** jobs; jobs already queued keep the settings they were c
 | Setting | Default | Description |
 |---|---|---|
 | `EMAIL_WORKER_CONCURRENCY` | `5` | Emails sent in parallel **per worker process** |
+| `IN_APP_WORKER_CONCURRENCY` | `10` | In-app messages saved in parallel **per worker process** |
 
 ## Health check
 

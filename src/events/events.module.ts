@@ -6,10 +6,11 @@ import { QueuesModule } from '../queues/queues.module.js';
 import { EmailController } from './email.controller.js';
 import { EventsController } from './events.controller.js';
 import { EventsService } from './events.service.js';
+import { InAppController } from './in-app.controller.js';
 
 @Module({
   imports: [ApiKeysModule, NotificationsModule, ProvidersModule, QueuesModule],
-  controllers: [EventsController, EmailController],
+  controllers: [EventsController, EmailController, InAppController],
   providers: [EventsService],
 })
 export class EventsModule {}

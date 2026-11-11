@@ -19,7 +19,11 @@ describe('emailChannel', () => {
 
   it('builds an EmailMessage from rendered content', () => {
     expect(
-      emailChannel.buildMessage('a@b.co', { subject: 'Hi', text: 'Body' }),
+      emailChannel.buildMessage(
+        'a@b.co',
+        { subject: 'Hi', text: 'Body' },
+        { notificationId: 'n1', tenantId: 't1', environment: 'live' },
+      ),
     ).toEqual({ to: 'a@b.co', subject: 'Hi', html: undefined, text: 'Body' });
   });
 });

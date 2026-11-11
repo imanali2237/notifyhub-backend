@@ -6,6 +6,7 @@
 export const DEFAULTS = {
   // ── HTTP ──
   PORT: 3000,
+  CORS_ORIGINS: '*', // which websites may call the API from a browser (the inbox UI)
 
   // ── Auth ──
   JWT_EXPIRES_IN: '8h',
@@ -24,6 +25,9 @@ export const DEFAULTS = {
   SMTP_SECURE: false, // true for port 465 (implicit TLS)
   SMTP_CONNECTION_TIMEOUT_MS: 10_000,
   SMTP_SOCKET_TIMEOUT_MS: 20_000,
+  SMTP_POOL: true, // reuse open connections instead of one new connection per email
+  SMTP_MAX_CONNECTIONS: 5, // open connections per worker process (when pooling)
+  SMTP_MAX_MESSAGES: 100, // emails per connection before it is replaced (when pooling)
 
   // ── Brevo ──
   BREVO_TIMEOUT_MS: 10_000, // max wait for Brevo's API before trying the next provider
@@ -38,6 +42,11 @@ export const DEFAULTS = {
 
   // ── Workers ──
   EMAIL_WORKER_CONCURRENCY: 5, // emails sent in parallel per worker process
+  IN_APP_WORKER_CONCURRENCY: 10, // in-app messages saved in parallel per worker process
+
+  // ── In-app inbox ──
+  IN_APP_ENABLED: true,
+  INBOX_TOKEN_EXPIRES_IN: '12h', // how long a subscriber token works
 
   // ── Trigger API ──
   IDEMPOTENCY_TTL_SECONDS: 24 * 60 * 60, // same idempotencyKey within this = duplicate

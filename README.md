@@ -33,9 +33,11 @@ curl -X POST http://localhost:3000/v1/email/send \
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, run, create an account and API key, send your first email |
 | [Email providers](docs/email-providers.md) | Gmail, Brevo, any SMTP server — and **several providers with automatic failover** |
+| [In-app inbox](docs/in-app-inbox.md) | A live notification inbox (bell icon) inside your own app |
 | [Sending notifications](docs/sending-notifications.md) | Endpoints, templates, idempotency, tracking delivery, errors |
 | [Configuration reference](docs/configuration.md) | Every `.env` setting with its default |
-| [Queues and workers](docs/queues-and-workers.md) | Retries, the queue dashboard, concurrency, scaling |
+| [Queues and workers](docs/queues-and-workers.md) | Retries, the queue dashboard, concurrency |
+| [Scaling](docs/scaling.md) | More workers and API instances, load balancing, capacity planning — **tested at 20,000 notifications/min** |
 | [Adding a provider or channel](docs/contributing/adding-a-provider.md) | Contributor guide |
 | [Architecture](docs/architecture.md) | Full design and roadmap |
 
@@ -48,7 +50,9 @@ curl -X POST http://localhost:3000/v1/email/send \
 - **Self-hosted, one command** — `npm run dev` starts the databases, queue, API and worker
 - **Email** through **SMTP** (Gmail, any server, Mailpit for local testing) and **Brevo**
 - **Provider failover** — list providers in order (`EMAIL_PROVIDERS=brevo,smtp`); if one fails, the next takes over
+- **In-app inbox** — messages appear **instantly** in your app over a WebSocket (Socket.IO + Redis), with an inbox API (list, unread count, mark read), secure per-user tokens and a [demo page](examples/inbox-demo/index.html)
 - **Reliable delivery** — queue per channel, retries with exponential backoff, dead-letter queue, idempotency keys
+- **Scales out** — run more workers or API instances with the same `.env`; load-tested at 20,000 notifications/min on a laptop ([details](docs/scaling.md#8-measured-performance))
 - **Delivery tracking** — every notification's status and full history
 - **Templates** — Handlebars with automatic HTML escaping
 - **Accounts and API keys** — the first account is the admin; API keys are shown once and stored hashed
@@ -56,7 +60,7 @@ curl -X POST http://localhost:3000/v1/email/send \
 - **Built-in tools** — Swagger API docs, queue dashboard (Bull Board), Mailpit test inbox
 - **Plug-and-play design** — a new provider is one class + one line
 
-**Planned** (see the [roadmap](docs/architecture.md#11-roadmap)): SMS, Telegram / Discord / Slack, push, in-app inbox with `<Inbox />` widget, subscribers and preferences, workflows, outbound webhooks, dashboard, `@notifyhub/node` SDK.
+**Planned** (see the [roadmap](docs/architecture.md#11-roadmap)): SMS, Telegram / Discord / Slack, push, `<Inbox />` React component, subscribers and preferences, workflows, outbound webhooks, dashboard, `@notifyhub/node` SDK.
 
 ---
 
@@ -89,14 +93,17 @@ create your account and API key and send your first email.
 ```
 your app ──► API (NestJS) ──► Redis queue (BullMQ) ──► worker ──► providers (SMTP, Brevo, ...)
                │   │                                      │
-               │   └─► PostgreSQL (accounts, API keys)    │
-               └─────► MongoDB (notifications, history) ◄─┘
+               │   └─► PostgreSQL (accounts, API keys)    ├─► MongoDB in-app inbox
+               └─────► MongoDB (notifications, history) ◄─┘      │ Redis pub/sub
+                                                                 ▼
+your users' browsers ◄──────── WebSocket /inbox (Socket.IO) ── API
 ```
 
-1. Your app calls `POST /v1/email/send` (or `/v1/events/trigger`) with an `x-api-key`
+1. Your app calls `POST /v1/email/send`, `/v1/in-app/send` or `/v1/events/trigger` with an `x-api-key`
 2. The API validates the request, checks the idempotency key, saves the notification (`queued`), adds a job to the channel's queue and answers `202` in milliseconds
 3. A worker takes the job, renders the templates and sends through the configured providers in order, failing over when one fails
 4. The result (`sent` / `retrying` / `failed`, which provider, every attempt) is recorded and available at `GET /v1/notifications/:id`
+5. In-app messages are saved to the user's inbox and pushed live through Redis to the API's WebSocket, reaching every open tab
 
 The API and worker are **separate processes**: workers scale independently,
 and requests are still accepted while workers are down.
@@ -112,6 +119,7 @@ and requests are still accepted while workers are down.
 | Notifications & history | MongoDB + Mongoose |
 | Queues, codes, idempotency | Redis + [BullMQ](https://docs.bullmq.io/) |
 | Email | nodemailer (SMTP), Brevo REST API |
+| Real-time | Socket.IO with the Redis adapter |
 | Templates | Handlebars |
 | Validation | class-validator (requests), zod (configuration) |
 | Auth | argon2id (passwords), JWT, SHA-256 hashed API keys |
@@ -125,14 +133,16 @@ and requests are still accepted while workers are down.
 ```
 ├── docker/docker-compose.yml   # PostgreSQL, MongoDB, Redis, Mailpit
 ├── docs/                       # Guides (start at docs/README.md)
+├── examples/inbox-demo/        # One-file live inbox page
 ├── prisma/                     # PostgreSQL schema + migrations
 ├── src/
 │   ├── main.ts / worker.ts     # The two entry points: API and worker
 │   ├── auth/  api-keys/  otp/  # Accounts, login, email verification, API keys
-│   ├── events/                 # Sending endpoints: /v1/events/trigger, /v1/email/send
+│   ├── events/                 # Sending endpoints: /v1/events/trigger, /v1/email/send, /v1/in-app/send
+│   ├── inbox/                  # In-app inbox: storage, subscriber tokens, inbox API, WebSocket
 │   ├── notifications/          # Notification storage + GET /v1/notifications/:id
-│   ├── channels/               # Channel definitions (email; SMS etc. later)
-│   ├── providers/              # Provider contract, registry with failover, SMTP, Brevo
+│   ├── channels/               # Channel definitions (email, in_app; SMS etc. later)
+│   ├── providers/              # Provider contract, registry with failover, SMTP, Brevo, inbox
 │   ├── queues/                 # BullMQ setup + queue dashboard
 │   ├── worker/                 # Job processors
 │   ├── templates/              # Handlebars rendering
@@ -152,6 +162,7 @@ and requests are still accepted while workers are down.
 - **Separate API and worker processes** — scale workers independently; accept requests even when workers are down.
 - **Provider failover with three failure kinds** — temporary (try next, retry later), provider (try next), message (stop) — so backups are used when they can help and never when they can't.
 - **Self-hosted configuration** — provider credentials live in the operator's `.env`, never in the database or API responses.
+- **Subscriber tokens for browsers** — the inbox UI never sees an API key; your backend exchanges it for a short-lived token scoped to one user, signed with its own derived key.
 
 ---
 
@@ -160,7 +171,7 @@ and requests are still accepted while workers are down.
 - [x] **Foundation:** Docker Compose, accounts + API keys, Swagger
 - [x] **Async and reliable:** worker, BullMQ queues, retries + backoff, dead-letter queue, Bull Board, idempotency, status history
 - [ ] **Channels and providers:** ~~provider registry~~ ✅, ~~SMTP + Brevo with failover~~ ✅, Telegram, Discord, SMS (console, textbee)
-- [ ] **In-app and real-time:** Socket.IO gateway, inbox API, `<Inbox />` component, Web Push + FCM
+- [ ] **In-app and real-time:** ~~Socket.IO gateway~~ ✅, ~~inbox API~~ ✅, `<Inbox />` component, Web Push + FCM
 - [ ] **Smart features:** subscribers, workflows, delays, digests, preferences, quiet hours, rate limiting, outbound webhooks
 - [ ] **Dashboard and SDK:** Next.js dashboard, template editor, logs explorer, `@notifyhub/node` on npm, demo app
 - [ ] **Production polish:** production Docker Compose + self-hosting guide, OpenTelemetry, metrics, structured logging, load tests, CI

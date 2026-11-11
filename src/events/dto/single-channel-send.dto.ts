@@ -4,8 +4,8 @@ import { EVENT_NAME_PATTERN } from '../events.constants.js';
 import { TriggerEventDto } from './trigger-event.dto.js';
 
 /**
- * Shared fields of every per-channel endpoint (POST /v1/email/send, later
- * /v1/sms/send...): `to`, `payload`, `idempotencyKey` — same rules as the
+ * Shared fields of every per-channel endpoint (POST /v1/email/send,
+ * POST /v1/in-app/send...): `to`, `payload`, `idempotencyKey` — same rules as the
  * trigger endpoint, but no `channels` wrapper and `event` is optional.
  *
  * Each channel's DTO = this + that channel's content DTO (see SendEmailDto).

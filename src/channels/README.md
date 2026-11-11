@@ -9,10 +9,13 @@ everything else is driven by it.
 1. **Name + queue** — `channels/channels.constants.ts`
 
    ```ts
-   export const CHANNELS = ['email', 'sms'] as const;
+   export const CHANNELS = ['email', 'in_app', 'sms'] as const;
    CHANNEL_QUEUES.sms = 'notifications.sms';
-   CHANNEL_CONCURRENCY.sms = 10;
+   CHANNEL_CONCURRENCY_SETTING.sms = 'SMS_WORKER_CONCURRENCY'; // + env.ts + defaults
    ```
+
+   For a phone channel, also add `phone` to `Recipient`, `RecipientDto`, the
+   notification schema and `RecipientAddressField`.
 
    TypeScript now fails to compile until steps 2–5 are done (`Record<Channel, …>`).
 
@@ -24,6 +27,7 @@ everything else is driven by it.
      recipientField: 'phone',
      templateFields: { text: 'plain' },
      validateContent: (c) => (c.text ? null : 'channels.sms needs text'),
+     // 3rd argument (notificationId, tenantId, environment) if the message needs it
      buildMessage: (to, r) => ({ to, text: r.text ?? '' }),
    };
    ```
