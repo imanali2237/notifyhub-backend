@@ -12,6 +12,7 @@ your own server; your apps send notifications through its API.
 | Guide | Read it when you want to... |
 |---|---|
 | [Getting started](getting-started.md) | Install NotifyHub, run it, create an account and an API key, send your first email |
+| [Self-hosting in production](self-hosting.md) | Deploy on a server with Docker: one command, HTTPS, updates, backups, security |
 | [Email providers](email-providers.md) | Connect Gmail, Brevo or any SMTP server; use **several providers with automatic failover** |
 | [In-app inbox](in-app-inbox.md) | Show a live notification inbox (bell icon) inside your own app |
 | [Sending notifications](sending-notifications.md) | Call the API from your app: endpoints, templates, idempotency, tracking delivery, errors |
@@ -33,6 +34,7 @@ your own server; your apps send notifications through its API.
 | Reliability | Queue per channel, retries with exponential backoff, dead-letter queue, idempotency keys |
 | Tracking | `GET /v1/notifications/:id` with full status history |
 | Tools | Swagger docs (`/docs`), queue dashboard (`/queues`), Mailpit (`:8025`) |
+| Deployment | ✅ Production Docker image + compose file, automatic migrations, optional HTTPS (Caddy), backups |
 | SMS, Telegram, push, `<Inbox />` React component, SDK, dashboard | Planned |
 
 ## Keeping these docs up to date

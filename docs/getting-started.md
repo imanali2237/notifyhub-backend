@@ -1,6 +1,7 @@
 # Getting started
 
-From zero to your first email in about 10 minutes.
+From zero to your first email in about 10 minutes, on your own computer.
+Deploying to a server? See [Self-hosting in production](self-hosting.md).
 
 ## 1. Requirements
 

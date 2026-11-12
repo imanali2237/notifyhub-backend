@@ -558,7 +558,7 @@ Free-tier limits of third-party providers (Brevo, textbee, ...) change over time
 - [ ] Structured logging with Pino and correlation IDs
 - [ ] k6 load test, publish results in README
 - [ ] GitHub Actions CI (lint, test, build, publish Docker image)
-- [ ] Production `docker compose` file + self-hosting guide (env reference, upgrades, backups)
+- [x] Production `docker compose` file + self-hosting guide (env reference, upgrades, backups)
 - [ ] Open-source essentials: LICENSE (e.g. MIT), CONTRIBUTING.md, issue templates
 - [ ] README with architecture diagram, design decisions, 2-minute demo video
 

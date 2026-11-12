@@ -32,6 +32,7 @@ curl -X POST http://localhost:3000/v1/email/send \
 | Guide | |
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, run, create an account and API key, send your first email |
+| [Self-hosting in production](docs/self-hosting.md) | Docker deployment: one command, HTTPS, updates, backups, security checklist |
 | [Email providers](docs/email-providers.md) | Gmail, Brevo, any SMTP server — and **several providers with automatic failover** |
 | [In-app inbox](docs/in-app-inbox.md) | A live notification inbox (bell icon) inside your own app |
 | [Sending notifications](docs/sending-notifications.md) | Endpoints, templates, idempotency, tracking delivery, errors |
@@ -47,7 +48,7 @@ curl -X POST http://localhost:3000/v1/email/send \
 
 **Works today**
 
-- **Self-hosted, one command** — `npm run dev` starts the databases, queue, API and worker
+- **Self-hosted, one command** — `npm run dev` for development; `docker compose ... up -d` for production, with optional automatic HTTPS ([guide](docs/self-hosting.md))
 - **Email** through **SMTP** (Gmail, any server, Mailpit for local testing) and **Brevo**
 - **Provider failover** — list providers in order (`EMAIL_PROVIDERS=brevo,smtp`); if one fails, the next takes over
 - **In-app inbox** — messages appear **instantly** in your app over a WebSocket (Socket.IO + Redis), with an inbox API (list, unread count, mark read), secure per-user tokens and a [demo page](examples/inbox-demo/index.html)
@@ -85,6 +86,18 @@ npm run dev
 
 Then follow [Getting started](docs/getting-started.md#5-create-your-account) to
 create your account and API key and send your first email.
+
+### Production (Docker)
+
+Requirements: a Linux server with Docker. No Node.js needed.
+
+```bash
+git clone https://github.com/<your-username>/notifyhub.git && cd notifyhub
+cp .env.production.example .env.production      # set passwords, secrets, email
+docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+```
+
+HTTPS, updates, backups and scaling: [Self-hosting guide](docs/self-hosting.md).
 
 ---
 
@@ -131,7 +144,9 @@ and requests are still accepted while workers are down.
 ## Repository structure
 
 ```
-├── docker/docker-compose.yml   # PostgreSQL, MongoDB, Redis, Mailpit
+├── Dockerfile                  # Production image (API + worker + migrations)
+├── docker/docker-compose.yml   # Development: PostgreSQL, MongoDB, Redis, Mailpit
+├── docker/docker-compose.prod.yml  # Production: full stack, optional HTTPS (Caddy)
 ├── docs/                       # Guides (start at docs/README.md)
 ├── examples/inbox-demo/        # One-file live inbox page
 ├── prisma/                     # PostgreSQL schema + migrations
@@ -174,7 +189,7 @@ and requests are still accepted while workers are down.
 - [ ] **In-app and real-time:** ~~Socket.IO gateway~~ ✅, ~~inbox API~~ ✅, `<Inbox />` component, Web Push + FCM
 - [ ] **Smart features:** subscribers, workflows, delays, digests, preferences, quiet hours, rate limiting, outbound webhooks
 - [ ] **Dashboard and SDK:** Next.js dashboard, template editor, logs explorer, `@notifyhub/node` on npm, demo app
-- [ ] **Production polish:** production Docker Compose + self-hosting guide, OpenTelemetry, metrics, structured logging, load tests, CI
+- [ ] **Production polish:** ~~production Docker Compose + self-hosting guide~~ ✅, ~~load tests~~ ✅, OpenTelemetry, metrics, structured logging, CI
 
 ---
 

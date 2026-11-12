@@ -116,7 +116,16 @@ Open the queue dashboard and send traffic: the jobs are spread across the
 workers. Stop one with Ctrl+C: it finishes the jobs it's working on, then
 exits; the others take over the rest.
 
-### On a server: systemd
+### With the production Docker setup
+
+```bash
+docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --scale worker=3
+```
+
+Compose starts 3 identical worker containers; stopping or redeploying lets
+each finish its in-flight jobs first. See [Self-hosting](self-hosting.md).
+
+### On a server without Docker: systemd
 
 Run each copy as a service, so it starts on boot and restarts if it crashes.
 Create `/etc/systemd/system/notifyhub-worker@.service`:
@@ -284,7 +293,7 @@ MB per API instance and ~200–400 MB per worker under this load.
 
 ## 9. Production checklist
 
-- [ ] `npm run build`, then run `node dist/main.js` (API) and `node dist/worker.js` (workers) under a process manager (systemd, Docker, ...) that restarts them
+- [ ] Deploy with the [production Docker setup](self-hosting.md) (or run `node dist/main.js` / `node dist/worker.js` under a process manager that restarts them)
 - [ ] `NODE_ENV=production`, real secrets (`openssl rand -hex 32`), `BULL_BOARD_PASSWORD` set
 - [ ] `SMTP_POOL=true`; worker and connection counts within your email provider's limits
 - [ ] Redis: `maxmemory-policy noeviction`, persistence on
