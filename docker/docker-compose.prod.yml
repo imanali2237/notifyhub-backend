@@ -1,0 +1,151 @@
+# NotifyHub — production deployment (self-hosting).
+# Full guide: docs/self-hosting.md
+#
+#   cp .env.production.example .env.production     # then edit it
+#   docker compose -f docker/docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Services:
+#   postgres, mongo, redis   data (not reachable from outside this machine)
+#   migrate                  applies database migrations, then exits
+#   api                      HTTP API + inbox WebSocket on API_PORT (default 3000)
+#   worker                   sends notifications; scale with --scale worker=3
+#   caddy (optional)         automatic HTTPS: add --profile https
+name: notifyhub-prod
+
+# Rotate container logs so they can't fill the disk.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+# Settings shared by the API, the worker and migrations: everything from
+# .env.production, plus connection URLs pointing at the containers below.
+x-app-env: &app-env
+  env_file: ../.env.production
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgresql://notifyhub:${POSTGRES_PASSWORD}@postgres:5432/notifyhub
+    MONGO_URI: mongodb://notifyhub:${MONGO_PASSWORD}@mongo:27017/notifyhub?authSource=admin
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+x-app-build: &app-build
+  context: ..
+  dockerfile: Dockerfile
+  target: runtime
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notifyhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: notifyhub
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notifyhub -d notifyhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: notifyhub
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Set MONGO_PASSWORD in .env.production}
+    volumes: [mongo_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes" # persist queued jobs across restarts
+      - --maxmemory-policy
+      - noeviction # never delete queued jobs when memory is full (BullMQ requirement)
+      - --requirepass
+      - ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  # One-off: applies Prisma migrations, then exits. The API waits for it.
+  migrate:
+    <<: *app-env
+    build: { context: .., dockerfile: Dockerfile, target: migrate }
+    image: notifyhub-migrate:latest
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    logging: *logging
+
+  api:
+    <<: *app-env
+    build: *app-build
+    image: notifyhub:latest
+    restart: unless-stopped
+    command: ["node", "--enable-source-maps", "dist/main.js"]
+    ports:
+      - "${API_BIND:-0.0.0.0}:${API_PORT:-3000}:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 30s
+    logging: *logging
+
+  worker:
+    <<: *app-env
+    build: *app-build
+    image: notifyhub:latest
+    restart: unless-stopped
+    command: ["node", "--enable-source-maps", "dist/worker.js"]
+    healthcheck:
+      disable: true # no HTTP server in the worker
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # On stop/redeploy the worker finishes the jobs it is sending first.
+    stop_grace_period: 60s
+    logging: *logging
+
+  # Optional: HTTPS with automatic Let's Encrypt certificates.
+  # Enable with --profile https, and set DOMAIN + API_BIND=127.0.0.1.
+  caddy:
+    image: caddy:2
+    profiles: [https]
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    logging: *logging
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,19 @@
+# Keep the build context small and never send secrets into an image.
+.git
+node_modules
+dist
+coverage
+*.tsbuildinfo
+*.log
+
+.env
+.env.*
+
+docs
+examples
+test
+docker
+README.md
+LICENSE
+.vscode
+.idea
